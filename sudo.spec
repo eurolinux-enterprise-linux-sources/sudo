@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.6p3
-Release: 27%{?dist}
+Release: 28%{?dist}
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -138,6 +138,9 @@ Patch53: sudo-1.8.6p3-sudoerslocale.patch
 Patch54: sudo-1.8.6p3-iologracecondition.patch
 # 1391938 - CVE-2016-7032 CVE-2016-7076 sudo: various flaws [rhel-6.9]
 Patch55: sudo-1.8.6p3-noexec-update.patch
+# 1455399 - CVE-2017-1000367 sudo: Privilege escalation in via improper get_process_ttyname() parsing [rhel-6.9.z]
+Patch56: sudo-1.8.6p3-tty-parsing.patch
+
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -217,6 +220,7 @@ plugins that use %{name}.
 %patch53 -p1 -b .sudoerslocale
 %patch54 -p1 -b .iologracecondition
 %patch55 -p1 -b .noexec-update
+%patch56 -p1 -b .tty-parsing
 
 %build
 autoreconf -I m4 -fv --install
@@ -333,6 +337,10 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
+* Mon May 29 2017 Radovan Sroka <rsroka@redhat.com> - 1.8.6p3-28
+- Fixes CVE-2017-1000367
+  Resolves: rhbz#1455399
+
 * Thu Nov 24 2016 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-27
 - Update noexec syscall blacklist
 - Fixes CVE-2016-7032 and CVE-2016-7076
