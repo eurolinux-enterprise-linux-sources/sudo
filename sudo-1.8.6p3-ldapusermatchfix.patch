@@ -1,0 +1,47 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.ldapusermatchfix sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.ldapusermatchfix	2015-03-02 15:25:26.350220294 +0100
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2015-03-02 15:47:39.684287537 +0100
+@@ -2646,22 +2646,37 @@ sudo_ldap_result_get(struct sudo_nss *ns
+ 	    result = NULL;
+ 	    rc = ldap_search_ext_s(ld, base->val, LDAP_SCOPE_SUBTREE, filt,
+ 		NULL, 0, NULL, NULL, tvp, 0, &result);
+-	    if (rc != LDAP_SUCCESS) {
++	    if (rc != LDAP_SUCCESS || result == NULL) {
+ 		DPRINTF(("nothing found for '%s'", filt), 1);
+ 		continue;
+ 	    }
+-	    lres->user_matches = true;
++
++	    DPRINTF(("search result has %d entries (do_netgr=%s)",
++		     ldap_count_entries(ld, result), do_netgr ? "true" : "false"), 1);
++	    /*
++	     * Only set user_matches if we got some results back and if we are
++	     * NOT searching for netgroup entries. For the netgroup case, user_maches
++	     * will be set only if a netgroup match was found.
++	     */
++	    lres->user_matches = lres->user_matches ? true : ldap_count_entries(ld, result) > 0 && !do_netgr;
+ 
+ 	    /* Add the seach result to list of search results. */
+ 	    DPRINTF(("adding search result"), 1);
+ 	    sudo_ldap_result_add_search(lres, ld, result);
+ 	    LDAP_FOREACH(entry, ld, result) {
+-		if ((!do_netgr ||
+-		    sudo_ldap_check_user_netgroup(ld, entry, pw->pw_name)) &&
++	      if (do_netgr) {
++		if (sudo_ldap_check_user_netgroup(ld, entry, pw->pw_name) &&
+ 		    sudo_ldap_check_host(ld, entry)) {
+-		    lres->host_matches = true;
+-		    sudo_ldap_result_add_entry(lres, entry);
++		  lres->host_matches = true;
++		  lres->user_matches = true;
++		  sudo_ldap_result_add_entry(lres, entry);
++		}
++	      } else {
++		if (sudo_ldap_check_host(ld, entry)) {
++		  lres->host_matches = true;
++		  sudo_ldap_result_add_entry(lres, entry);
+ 		}
++	      }
+ 	    }
+ 	    DPRINTF(("result now has %d entries", lres->nentries), 1);
+ 	}

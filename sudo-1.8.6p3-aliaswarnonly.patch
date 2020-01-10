@@ -1,0 +1,12 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/visudo.c.aliaswarnonly sudo-1.8.6p3/plugins/sudoers/visudo.c
+--- sudo-1.8.6p3/plugins/sudoers/visudo.c.aliaswarnonly	2012-09-25 16:19:04.995831784 +0200
++++ sudo-1.8.6p3/plugins/sudoers/visudo.c	2012-09-25 16:20:15.768964400 +0200
+@@ -1238,7 +1238,7 @@ check_aliases(bool strict, bool quiet)
+ 
+     /* If all aliases were referenced we will have an empty tree. */
+     if (!no_aliases() && !quiet)
+-	alias_apply(print_unused, strict ? "Error" : "Warning");
++	alias_apply(print_unused, "Warning");
+ 
+     debug_return_int(strict ? errors : 0);
+ }

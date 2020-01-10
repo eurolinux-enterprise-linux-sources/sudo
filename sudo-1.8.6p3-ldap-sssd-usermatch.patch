@@ -1,0 +1,24 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.usermatch sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.usermatch	2012-11-23 15:57:00.084176086 +0100
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2012-11-23 15:57:21.491239877 +0100
+@@ -742,7 +742,7 @@ sudo_ldap_check_runas_user(LDAP *ld, LDA
+ 	    }
+ 	    /* FALLTHROUGH */
+ 	default:
+-	    if (strcasecmp(val, runas_pw->pw_name) == 0)
++	    if (userpw_matches(val, runas_pw->pw_name, runas_pw))
+ 		ret = true;
+ 	    break;
+ 	}
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.usermatch sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.usermatch	2012-11-23 15:57:12.234211662 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2012-11-23 15:57:21.492239881 +0100
+@@ -466,7 +466,7 @@ sudo_sss_check_runas_user(struct sudo_ss
+ 	    /* FALLTHROUGH */
+ 	    sudo_debug_printf(SUDO_DEBUG_DEBUG, "FALLTHROUGH");
+ 	default:
+-	    if (strcasecmp(val, runas_pw->pw_name) == 0) {
++	    if (userpw_matches(val, runas_pw->pw_name, runas_pw)) {
+ 		sudo_debug_printf(SUDO_DEBUG_DEBUG,
+ 		    "%s == %s (pw_name) => match", val, runas_pw->pw_name);
+ 		ret = true;

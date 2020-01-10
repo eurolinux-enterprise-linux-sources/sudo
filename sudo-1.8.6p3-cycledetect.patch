@@ -1,0 +1,477 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/alias.c.cycledetect sudo-1.8.6p3/plugins/sudoers/alias.c
+--- sudo-1.8.6p3/plugins/sudoers/alias.c.cycledetect	2012-09-18 15:56:29.000000000 +0200
++++ sudo-1.8.6p3/plugins/sudoers/alias.c	2013-08-09 10:52:04.785860905 +0200
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2004-2005, 2007-2011
++ * Copyright (c) 2004-2005, 2007-2013
+  *	Todd C. Miller <Todd.Miller@courtesan.com>
+  *
+  * Permission to use, copy, modify, and distribute this software for any
+@@ -50,7 +50,6 @@
+  * Globals
+  */
+ struct rbtree *aliases;
+-unsigned int alias_seqno;
+ 
+ /*
+  * Comparison function for the red-black tree.
+@@ -76,29 +75,31 @@ alias_compare(const void *v1, const void
+ /*
+  * Search the tree for an alias with the specified name and type.
+  * Returns a pointer to the alias structure or NULL if not found.
++ * Caller is responsible for calling alias_put() on the returned
++ * alias to mark it as unused.
+  */
+ struct alias *
+-alias_find(char *name, int type)
++alias_get(char *name, int type)
+ {
+     struct alias key;
+     struct rbnode *node;
+     struct alias *a = NULL;
+-    debug_decl(alias_find, SUDO_DEBUG_ALIAS)
++    debug_decl(alias_get, SUDO_DEBUG_ALIAS)
+ 
+     key.name = name;
+     key.type = type;
+     if ((node = rbfind(aliases, &key)) != NULL) {
+ 	/*
+-	 * Compare the global sequence number with the one stored
+-	 * in the alias.  If they match then we've seen this alias
+-	 * before and found a loop.
++	 * Check whether this alias is already in use.
++	 * If so, we've detected a loop.  If not, set the flag,
++	 * which the caller should clear with a call to alias_put().
+ 	 */
+ 	a = node->data;
+-	if (a->seqno == alias_seqno) {
++	if (a->used) {
+ 	    errno = ELOOP;
+ 	    debug_return_ptr(NULL);
+ 	}
+-	a->seqno = alias_seqno;
++	a->used = true;
+     } else {
+ 	errno = ENOENT;
+     }
+@@ -106,6 +107,17 @@ alias_find(char *name, int type)
+ }
+ 
+ /*
++ * Clear the "used" flag in an alias once the caller is done with it.
++ */
++void
++alias_put(struct alias *a)
++{
++    debug_decl(alias_put, SUDO_DEBUG_ALIAS)
++    a->used = false;
++    debug_return;
++}
++
++/*
+  * Add an alias to the aliases redblack tree.
+  * Returns NULL on success and an error string on failure.
+  */
+@@ -119,7 +131,7 @@ alias_add(char *name, int type, struct m
+     a = ecalloc(1, sizeof(*a));
+     a->name = name;
+     a->type = type;
+-    /* a->seqno = 0; */
++    /* a->used = false; */
+     list2tq(&a->members, members);
+     if (rbinsert(aliases, a)) {
+ 	snprintf(errbuf, sizeof(errbuf), _("Alias `%s' already defined"), name);
+diff -up sudo-1.8.6p3/plugins/sudoers/match.c.cycledetect sudo-1.8.6p3/plugins/sudoers/match.c
+--- sudo-1.8.6p3/plugins/sudoers/match.c.cycledetect	2013-08-09 10:52:04.783860895 +0200
++++ sudo-1.8.6p3/plugins/sudoers/match.c	2013-08-09 10:52:04.785860905 +0200
+@@ -101,13 +101,13 @@ static bool command_matches_normal(char
+  * Check for user described by pw in a list of members.
+  * Returns ALLOW, DENY or UNSPEC.
+  */
+-static int
+-_userlist_matches(struct passwd *pw, struct member_list *list)
++int
++userlist_matches(struct passwd *pw, struct member_list *list)
+ {
+     struct member *m;
+     struct alias *a;
+     int rval, matched = UNSPEC;
+-    debug_decl(_userlist_matches, SUDO_DEBUG_MATCH)
++    debug_decl(userlist_matches, SUDO_DEBUG_MATCH)
+ 
+     tq_foreach_rev(list, m) {
+ 	switch (m->type) {
+@@ -123,10 +123,11 @@ _userlist_matches(struct passwd *pw, str
+ 		    matched = !m->negated;
+ 		break;
+ 	    case ALIAS:
+-		if ((a = alias_find(m->name, USERALIAS)) != NULL) {
+-		    rval = _userlist_matches(pw, &a->members);
++		if ((a = alias_get(m->name, USERALIAS)) != NULL) {
++		    rval = userlist_matches(pw, &a->members);
+ 		    if (rval != UNSPEC)
+ 			matched = m->negated ? !rval : rval;
++		    alias_put(a);
+ 		    break;
+ 		}
+ 		/* FALLTHROUGH */
+@@ -141,20 +142,13 @@ _userlist_matches(struct passwd *pw, str
+     debug_return_bool(matched);
+ }
+ 
+-int
+-userlist_matches(struct passwd *pw, struct member_list *list)
+-{
+-    alias_seqno++;
+-    return _userlist_matches(pw, list);
+-}
+-
+ /*
+  * Check for user described by pw in a list of members.
+  * If both lists are empty compare against def_runas_default.
+  * Returns ALLOW, DENY or UNSPEC.
+  */
+-static int
+-_runaslist_matches(struct member_list *user_list,
++int
++runaslist_matches(struct member_list *user_list,
+     struct member_list *group_list, struct member **matching_user,
+     struct member **matching_group)
+ {
+@@ -163,7 +157,7 @@ _runaslist_matches(struct member_list *u
+     int rval;
+     int user_matched = UNSPEC;
+     int group_matched = UNSPEC;
+-    debug_decl(_runaslist_matches, SUDO_DEBUG_MATCH)
++    debug_decl(runaslist_matches, SUDO_DEBUG_MATCH)
+ 
+     if (runas_pw != NULL) {
+ 	/* If no runas user or runas group listed in sudoers, use default. */
+@@ -184,11 +178,12 @@ _runaslist_matches(struct member_list *u
+ 			user_matched = !m->negated;
+ 		    break;
+ 		case ALIAS:
+-		    if ((a = alias_find(m->name, RUNASALIAS)) != NULL) {
+-			rval = _runaslist_matches(&a->members, &empty,
++		    if ((a = alias_get(m->name, RUNASALIAS)) != NULL) {
++			rval = runaslist_matches(&a->members, &empty,
+ 			    matching_user, NULL);
+ 			if (rval != UNSPEC)
+ 			    user_matched = m->negated ? !rval : rval;
++			alias_put(a);
+ 			break;
+ 		    }
+ 		    /* FALLTHROUGH */
+@@ -221,11 +216,12 @@ _runaslist_matches(struct member_list *u
+ 		    group_matched = !m->negated;
+ 		    break;
+ 		case ALIAS:
+-		    if ((a = alias_find(m->name, RUNASALIAS)) != NULL) {
+-			rval = _runaslist_matches(&empty, &a->members,
++		    if ((a = alias_get(m->name, RUNASALIAS)) != NULL) {
++			rval = runaslist_matches(&empty, &a->members,
+ 			    NULL, matching_group);
+ 			if (rval != UNSPEC)
+ 			    group_matched = m->negated ? !rval : rval;
++			alias_put(a);
+ 			break;
+ 		    }
+ 		    /* FALLTHROUGH */
+@@ -253,27 +249,17 @@ _runaslist_matches(struct member_list *u
+     debug_return_int(UNSPEC);
+ }
+ 
+-int
+-runaslist_matches(struct member_list *user_list,
+-    struct member_list *group_list, struct member **matching_user,
+-    struct member **matching_group)
+-{
+-    alias_seqno++;
+-    return _runaslist_matches(user_list ? user_list : &empty,
+-	group_list ? group_list : &empty, matching_user, matching_group);
+-}
+-
+ /*
+  * Check for host and shost in a list of members.
+  * Returns ALLOW, DENY or UNSPEC.
+  */
+-static int
+-_hostlist_matches(struct member_list *list)
++int
++hostlist_matches(struct member_list *list)
+ {
+     struct member *m;
+     struct alias *a;
+     int rval, matched = UNSPEC;
+-    debug_decl(_hostlist_matches, SUDO_DEBUG_MATCH)
++    debug_decl(hostlist_matches, SUDO_DEBUG_MATCH)
+ 
+     tq_foreach_rev(list, m) {
+ 	switch (m->type) {
+@@ -289,10 +275,11 @@ _hostlist_matches(struct member_list *li
+ 		    matched = !m->negated;
+ 		break;
+ 	    case ALIAS:
+-		if ((a = alias_find(m->name, HOSTALIAS)) != NULL) {
+-		    rval = _hostlist_matches(&a->members);
++		if ((a = alias_get(m->name, HOSTALIAS)) != NULL) {
++		    rval = hostlist_matches(&a->members);
+ 		    if (rval != UNSPEC)
+ 			matched = m->negated ? !rval : rval;
++		    alias_put(a);
+ 		    break;
+ 		}
+ 		/* FALLTHROUGH */
+@@ -307,23 +294,16 @@ _hostlist_matches(struct member_list *li
+     debug_return_bool(matched);
+ }
+ 
+-int
+-hostlist_matches(struct member_list *list)
+-{
+-    alias_seqno++;
+-    return _hostlist_matches(list);
+-}
+-
+ /*
+  * Check for cmnd and args in a list of members.
+  * Returns ALLOW, DENY or UNSPEC.
+  */
+-static int
+-_cmndlist_matches(struct member_list *list)
++int
++cmndlist_matches(struct member_list *list)
+ {
+     struct member *m;
+     int matched = UNSPEC;
+-    debug_decl(_cmndlist_matches, SUDO_DEBUG_MATCH)
++    debug_decl(cmndlist_matches, SUDO_DEBUG_MATCH)
+ 
+     tq_foreach_rev(list, m) {
+ 	matched = cmnd_matches(m);
+@@ -333,13 +313,6 @@ _cmndlist_matches(struct member_list *li
+     debug_return_bool(matched);
+ }
+ 
+-int
+-cmndlist_matches(struct member_list *list)
+-{
+-    alias_seqno++;
+-    return _cmndlist_matches(list);
+-}
+-
+ /*
+  * Check cmnd and args.
+  * Returns ALLOW, DENY or UNSPEC.
+@@ -357,11 +330,11 @@ cmnd_matches(struct member *m)
+ 	    matched = !m->negated;
+ 	    break;
+ 	case ALIAS:
+-	    alias_seqno++;
+-	    if ((a = alias_find(m->name, CMNDALIAS)) != NULL) {
+-		rval = _cmndlist_matches(&a->members);
++	    if ((a = alias_get(m->name, CMNDALIAS)) != NULL) {
++		rval = cmndlist_matches(&a->members);
+ 		if (rval != UNSPEC)
+ 		    matched = m->negated ? !rval : rval;
++		alias_put(a);
+ 	    }
+ 	    break;
+ 	case COMMAND:
+diff -up sudo-1.8.6p3/plugins/sudoers/parse.c.cycledetect sudo-1.8.6p3/plugins/sudoers/parse.c
+--- sudo-1.8.6p3/plugins/sudoers/parse.c.cycledetect	2012-09-18 15:57:43.000000000 +0200
++++ sudo-1.8.6p3/plugins/sudoers/parse.c	2013-08-09 10:52:04.785860905 +0200
+@@ -676,13 +676,14 @@ _print_member(struct lbuf *lbuf, char *n
+ 	    }
+ 	    break;
+ 	case ALIAS:
+-	    if ((a = alias_find(name, alias_type)) != NULL) {
++	    if ((a = alias_get(name, alias_type)) != NULL) {
+ 		tq_foreach_fwd(&a->members, m) {
+ 		    if (m != tq_first(&a->members))
+ 			lbuf_append(lbuf, ", ");
+ 		    _print_member(lbuf, m->name, m->type,
+ 			negated ? !m->negated : m->negated, alias_type);
+ 		}
++		alias_put(a);
+ 		break;
+ 	    }
+ 	    /* FALLTHROUGH */
+@@ -697,6 +698,5 @@ static void
+ print_member(struct lbuf *lbuf, char *name, int type, int negated,
+     int alias_type)
+ {
+-    alias_seqno++;
+     _print_member(lbuf, name, type, negated, alias_type);
+ }
+diff -up sudo-1.8.6p3/plugins/sudoers/parse.h.cycledetect sudo-1.8.6p3/plugins/sudoers/parse.h
+--- sudo-1.8.6p3/plugins/sudoers/parse.h.cycledetect	2012-09-18 15:56:29.000000000 +0200
++++ sudo-1.8.6p3/plugins/sudoers/parse.h	2013-08-09 10:54:30.984565529 +0200
+@@ -148,7 +148,7 @@ struct runascontainer {
+ struct alias {
+     char *name;				/* alias name */
+     unsigned short type;		/* {USER,HOST,RUNAS,CMND}ALIAS */
+-    unsigned short seqno;		/* sequence number */
++    bool used;				/* "used" flag for cycle detection */
+     struct member_list members;		/* list of alias members */
+ };
+ 
+@@ -170,35 +170,39 @@ struct defaults {
+ extern struct userspec_list userspecs;
+ extern struct defaults_list defaults;
+ 
+-/*
+- * Alias sequence number to avoid loops.
+- */
+-extern unsigned int alias_seqno;
+-
+-/*
+- * Prototypes
+- */
+-char *alias_add(char *, int, struct member *);
+-bool addr_matches(char *);
+-int cmnd_matches(struct member *);
+-int cmndlist_matches(struct member_list *);
+-bool command_matches(char *, char *);
+-int hostlist_matches(struct member_list *);
+-bool hostname_matches(char *, char *, char *);
+-bool netgr_matches(char *, char *, char *, char *);
++/* alias.c */
+ bool no_aliases(void);
+-int runaslist_matches(struct member_list *, struct member_list *, struct member **, struct member **);
+-int userlist_matches(struct passwd *, struct member_list *);
+-bool usergr_matches(char *, char *, struct passwd *);
+-bool userpw_matches(char *, char *, struct passwd *);
+-bool group_matches(char *, struct group *);
+-struct alias *alias_find(char *, int);
+-struct alias *alias_remove(char *, int);
+-void alias_free(void *);
+-void alias_apply(int (*)(void *, void *), void *);
++char *alias_add(char *name, int type, struct member *members);
++int alias_compare(const void *a1, const void *a2);
++struct alias *alias_get(char *name, int type);
++struct alias *alias_remove(char *name, int type);
++void alias_apply(int (*func)(void *, void *), void *cookie);
++void alias_free(void *a);
++void alias_put(struct alias *a);
+ void init_aliases(void);
+-void init_lexer(void);
++/* gram.c */
+ void init_parser(const char *, bool);
+-int alias_compare(const void *, const void *);
++
++/* match_addr.c */
++bool addr_matches(char *n);
++
++/* match.c */
++bool command_matches(char *sudoers_cmnd, char *sudoers_args);
++bool group_matches(char *sudoers_group, struct group *gr);
++bool hostname_matches(char *shost, char *lhost, char *pattern);
++bool netgr_matches(char *netgr, char *lhost, char *shost, char *user);
++bool usergr_matches(char *group, char *user, struct passwd *pw);
++bool userpw_matches(char *sudoers_user, char *user, struct passwd *pw);
++int cmnd_matches(struct member *m);
++int cmndlist_matches(struct member_list *list);
++int hostlist_matches(struct member_list *list);
++int runaslist_matches(struct member_list *user_list, struct member_list *group_list, struct member **matching_user, struct member **matching_group);
++int userlist_matches(struct passwd *pw, struct member_list *list);
++
++/* toke.c */
++ void init_lexer(void);
++
++/* base64.c */
++ size_t base64_decode(const char *str, unsigned char *dst, size_t dsize);
+ 
+ #endif /* _SUDO_PARSE_H */
+diff -up sudo-1.8.6p3/plugins/sudoers/visudo.c.cycledetect sudo-1.8.6p3/plugins/sudoers/visudo.c
+--- sudo-1.8.6p3/plugins/sudoers/visudo.c.cycledetect	2013-08-09 10:52:04.759860779 +0200
++++ sudo-1.8.6p3/plugins/sudoers/visudo.c	2013-08-09 10:52:04.786860910 +0200
+@@ -1084,7 +1084,6 @@ alias_remove_recursive(char *name, int t
+ 	}
+ 	rbinsert(alias_freelist, a);
+     }
+-    alias_seqno++;
+     debug_return_bool(rval);
+ }
+ 
+@@ -1096,12 +1095,13 @@ check_alias(char *name, int type, int st
+     int errors = 0;
+     debug_decl(check_alias, SUDO_DEBUG_ALIAS)
+ 
+-    if ((a = alias_find(name, type)) != NULL) {
++    if ((a = alias_get(name, type)) != NULL) {
+ 	/* check alias contents */
+ 	tq_foreach_fwd(&a->members, m) {
+ 	    if (m->type == ALIAS)
+ 		errors += check_alias(m->name, type, strict, quiet);
+ 	}
++	alias_put(a);
+     } else {
+ 	if (!quiet) {
+ 	    char *fmt;
+@@ -1146,26 +1146,22 @@ check_aliases(bool strict, bool quiet)
+     tq_foreach_fwd(&userspecs, us) {
+ 	tq_foreach_fwd(&us->users, m) {
+ 	    if (m->type == ALIAS) {
+-		alias_seqno++;
+ 		errors += check_alias(m->name, USERALIAS, strict, quiet);
+ 	    }
+ 	}
+ 	tq_foreach_fwd(&us->privileges, priv) {
+ 	    tq_foreach_fwd(&priv->hostlist, m) {
+ 		if (m->type == ALIAS) {
+-		    alias_seqno++;
+ 		    errors += check_alias(m->name, HOSTALIAS, strict, quiet);
+ 		}
+ 	    }
+ 	    tq_foreach_fwd(&priv->cmndlist, cs) {
+ 		tq_foreach_fwd(&cs->runasuserlist, m) {
+ 		    if (m->type == ALIAS) {
+-			alias_seqno++;
+ 			errors += check_alias(m->name, RUNASALIAS, strict, quiet);
+ 		    }
+ 		}
+ 		if ((m = cs->cmnd)->type == ALIAS) {
+-		    alias_seqno++;
+ 		    errors += check_alias(m->name, CMNDALIAS, strict, quiet);
+ 		}
+ 	    }
+@@ -1176,7 +1172,6 @@ check_aliases(bool strict, bool quiet)
+     tq_foreach_fwd(&userspecs, us) {
+ 	tq_foreach_fwd(&us->users, m) {
+ 	    if (m->type == ALIAS) {
+-		alias_seqno++;
+ 		if (!alias_remove_recursive(m->name, USERALIAS))
+ 		    errors++;
+ 	    }
+@@ -1184,7 +1179,6 @@ check_aliases(bool strict, bool quiet)
+ 	tq_foreach_fwd(&us->privileges, priv) {
+ 	    tq_foreach_fwd(&priv->hostlist, m) {
+ 		if (m->type == ALIAS) {
+-		    alias_seqno++;
+ 		    if (!alias_remove_recursive(m->name, HOSTALIAS))
+ 			errors++;
+ 		}
+@@ -1192,13 +1186,11 @@ check_aliases(bool strict, bool quiet)
+ 	    tq_foreach_fwd(&priv->cmndlist, cs) {
+ 		tq_foreach_fwd(&cs->runasuserlist, m) {
+ 		    if (m->type == ALIAS) {
+-			alias_seqno++;
+ 			if (!alias_remove_recursive(m->name, RUNASALIAS))
+ 			    errors++;
+ 		    }
+ 		}
+ 		if ((m = cs->cmnd)->type == ALIAS) {
+-		    alias_seqno++;
+ 		    if (!alias_remove_recursive(m->name, CMNDALIAS))
+ 			errors++;
+ 		}
+@@ -1225,7 +1217,6 @@ check_aliases(bool strict, bool quiet)
+ 	tq_foreach_fwd(&d->binding, binding) {
+ 	    for (m = binding; m != NULL; m = m->next) {
+ 		if (m->type == ALIAS) {
+-		    alias_seqno++;
+ 		    if (!alias_remove_recursive(m->name, atype))
+ 			errors++;
+ 		}

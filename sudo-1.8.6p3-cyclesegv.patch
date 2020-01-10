@@ -1,0 +1,24 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/visudo.c.cyclesegv sudo-1.8.6p3/plugins/sudoers/visudo.c
+--- sudo-1.8.6p3/plugins/sudoers/visudo.c.cyclesegv	2013-01-23 12:15:32.493762418 +0100
++++ sudo-1.8.6p3/plugins/sudoers/visudo.c	2013-01-23 12:40:52.280432614 +0100
+@@ -1075,18 +1075,16 @@ alias_remove_recursive(char *name, int t
+     bool rval = true;
+     debug_decl(alias_remove_recursive, SUDO_DEBUG_ALIAS)
+ 
+-    if ((a = alias_find(name, type)) != NULL) {
++    if ((a = alias_remove(name, type)) != NULL) {
+ 	tq_foreach_fwd(&a->members, m) {
+ 	    if (m->type == ALIAS) {
+ 		if (!alias_remove_recursive(m->name, type))
+ 		    rval = false;
+ 	    }
+ 	}
++	rbinsert(alias_freelist, a);
+     }
+     alias_seqno++;
+-    a = alias_remove(name, type);
+-    if (a)
+-	rbinsert(alias_freelist, a);
+     debug_return_bool(rval);
+ }
+ 

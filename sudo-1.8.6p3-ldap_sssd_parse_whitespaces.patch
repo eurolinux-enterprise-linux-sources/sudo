@@ -1,0 +1,91 @@
+diff -up ./common/fmt_string.c.rmwhitespaces ./common/fmt_string.c
+--- ./common/fmt_string.c.rmwhitespaces	2012-09-18 15:56:28.000000000 +0200
++++ ./common/fmt_string.c	2015-12-08 14:52:36.929941509 +0100
+@@ -38,6 +38,8 @@
+ # include <strings.h>
+ #endif /* HAVE_STRINGS_H */
+ 
++#include <ctype.h>
++
+ #include "missing.h"
+ #include "sudo_debug.h"
+ 
+@@ -64,3 +66,17 @@ fmt_string(const char *var, const char *
+ 
+     debug_return_str(str);
+ }
++
++char * rm_whitespaces(char * str){
++	    int state = 1;
++	    char * c;
++	    for (c = str ; *c != '\0' ; c++){
++	        if (state && isspace(*c))str++;
++	        else if (!isspace(*c))state = 0;
++	        else if (!state && isspace(*c)){
++			*c = '\0';
++			break;
++			}
++		}
++		return str;
++}
+diff -up ./plugins/sudoers/ldap.c.rmwhitespaces ./plugins/sudoers/ldap.c
+--- ./plugins/sudoers/ldap.c.rmwhitespaces	2015-12-08 14:48:28.331720437 +0100
++++ ./plugins/sudoers/ldap.c	2015-12-08 14:48:28.334720416 +0100
+@@ -943,17 +943,17 @@ sudo_ldap_parse_options(LDAP *ld, LDAPMe
+ 	    if (op == '+' || op == '-') {
+ 		*(val - 2) = '\0';	/* found, remove extra char */
+ 		/* case var+=val or var-=val */
+-		set_default(var, strunquote(val), (int) op);
++		set_default(rm_whitespaces(var), strunquote(val), (int) op);
+ 	    } else {
+ 		/* case var=val */
+-		set_default(var, strunquote(val), true);
++		set_default(rm_whitespaces(var), strunquote(val), true);
+ 	    }
+ 	} else if (*var == '!') {
+ 	    /* case !var Boolean False */
+-	    set_default(var + 1, NULL, false);
++	    set_default(rm_whitespaces(var + 1), NULL, false);
+ 	} else {
+ 	    /* case var Boolean True */
+-	    set_default(var, NULL, true);
++	    set_default(rm_whitespaces(var), NULL, true);
+ 	}
+ 	efree(var);
+     }
+diff -up ./plugins/sudoers/sssd.c.rmwhitespaces ./plugins/sudoers/sssd.c
+--- ./plugins/sudoers/sssd.c.rmwhitespaces	2015-12-08 14:48:28.331720437 +0100
++++ ./plugins/sudoers/sssd.c	2015-12-08 14:48:28.334720416 +0100
+@@ -1001,17 +1001,17 @@ sudo_sss_parse_options(struct sudo_sss_h
+ 	    if (op == '+' || op == '-') {
+ 		*(val - 2) = '\0';	/* found, remove extra char */
+ 		/* case var+=val or var-=val */
+-		set_default(v, strunquote(val), (int) op);
++		set_default(rm_whitespaces(v), strunquote(val), (int) op);
+ 	    } else {
+ 		/* case var=val */
+-		set_default(v, strunquote(val), true);
++		set_default(rm_whitespaces(v), strunquote(val), true);
+ 	    }
+ 	} else if (*v == '!') {
+ 	    /* case !var Boolean False */
+-	    set_default(v + 1, NULL, false);
++	    set_default(rm_whitespaces(v + 1), NULL, false);
+ 	} else {
+ 	    /* case var Boolean True */
+-	    set_default(v, NULL, true);
++	    set_default(rm_whitespaces(v), NULL, true);
+ 	}
+ 	efree(v);
+     }
+diff -up ./plugins/sudoers/sudoers.h.rmwhitespaces ./plugins/sudoers/sudoers.h
+--- ./plugins/sudoers/sudoers.h.rmwhitespaces	2015-12-08 14:48:28.315720552 +0100
++++ ./plugins/sudoers/sudoers.h	2015-12-08 14:48:28.334720416 +0100
+@@ -346,6 +346,7 @@ int sudoers_hook_unsetenv(const char *na
+ 
+ /* fmt_string.c */
+ char *fmt_string(const char *, const char *);
++char *rm_whitespaces(char * str);
+ 
+ /* sudoers.c */
+ void plugin_cleanup(int);

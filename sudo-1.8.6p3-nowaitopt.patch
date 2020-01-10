@@ -1,0 +1,113 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.c.nowaitopt sudo-1.8.6p3/plugins/sudoers/def_data.c
+--- sudo-1.8.6p3/plugins/sudoers/def_data.c.nowaitopt	2012-09-26 14:05:10.088862635 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.c	2012-09-26 13:36:07.750215749 +0200
+@@ -351,6 +351,10 @@ struct sudo_defs_types sudo_defs_table[]
+ 	N_("Set of limit privileges"),
+ 	NULL,
+     }, {
++        "cmnd_no_wait", T_FLAG,
++        N_("Don't fork and wait for the command to finish, just exec it"),
++        NULL,
++    }, {
+ 	NULL, 0, NULL
+     }
+ };
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.h.nowaitopt sudo-1.8.6p3/plugins/sudoers/def_data.h
+--- sudo-1.8.6p3/plugins/sudoers/def_data.h.nowaitopt	2012-09-26 14:05:03.280859958 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.h	2012-09-26 13:37:05.320329089 +0200
+@@ -162,6 +162,8 @@
+ #define I_PRIVS                 80
+ #define def_limitprivs          (sudo_defs_table[81].sd_un.str)
+ #define I_LIMITPRIVS            81
++#define def_cmnd_no_wait        (sudo_defs_table[82].sd_un.flag)
++#define I_CMND_NO_WAIT          82
+ 
+ enum def_tuple {
+ 	never,
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.c.nowaitopt sudo-1.8.6p3/plugins/sudoers/sudoers.c
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.c.nowaitopt	2012-09-26 14:04:47.223854171 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.c	2012-09-26 13:39:05.590552887 +0200
+@@ -689,6 +689,8 @@ sudoers_policy_main(int argc, char * con
+ 	command_info[info_len++] = estrdup("set_utmp=true");
+     if (def_use_pty)
+ 	command_info[info_len++] = estrdup("use_pty=true");
++    if (def_cmnd_no_wait)
++	command_info[info_len++] = estrdup("cmnd_no_wait=true");
+     if (def_utmp_runas)
+ 	command_info[info_len++] = fmt_string("utmp_user", runas_pw->pw_name);
+ #ifdef HAVE_LOGIN_CAP_H
+diff -up sudo-1.8.6p3/src/exec.c.nowaitopt sudo-1.8.6p3/src/exec.c
+--- sudo-1.8.6p3/src/exec.c.nowaitopt	2012-09-26 14:06:08.505887008 +0200
++++ sudo-1.8.6p3/src/exec.c	2012-09-26 13:29:19.786240447 +0200
+@@ -281,6 +281,45 @@ sudo_execute(struct command_details *det
+     }
+ 
+     /*
++     * If we don't want to wait for the command to exit, then just exec it.
++     * THIS WILL BREAK SEVERAL THINGS including SELinux, PAM sessions and I/O
++     * logging. Implemented because of rhbz#840980 (backwards compatibility).
++     * In 1.8.x branch this is even harder to get back, since the nowait code
++     * was completely removed.
++     */
++    if (details->flags & CD_DONTWAIT) {
++        if (exec_setup(details, NULL, -1) == true) {
++            /* headed for execve() */
++            sudo_debug_execve(SUDO_DEBUG_INFO, details->command,
++                              details->argv, details->envp);
++            if (details->closefrom >= 0) {
++                int maxfd = details->closefrom;
++                dup2(sv[1], maxfd);
++                (void)fcntl(maxfd, F_SETFD, FD_CLOEXEC);
++                sv[1] = maxfd++;
++                if (sudo_debug_fd_set(maxfd) != -1)
++                    maxfd++;
++                closefrom(maxfd);
++            }
++#ifdef HAVE_SELINUX
++            if (ISSET(details->flags, CD_RBAC_ENABLED)) {
++                selinux_execve(details->command, details->argv, details->envp,
++                               ISSET(details->flags, CD_NOEXEC));
++            } else
++#endif
++            {
++                sudo_execve(details->command, details->argv, details->envp,
++                            ISSET(details->flags, CD_NOEXEC));
++            }
++            sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to exec %s: %s",
++                              details->command, strerror(errno));
++        }
++        cstat->type = CMD_ERRNO;
++        cstat->val = errno;
++	return 127;
++    }
++    
++    /*
+      * We communicate with the child over a bi-directional pair of sockets.
+      * Parent sends signal info to child and child sends back wait status.
+      */
+diff -up sudo-1.8.6p3/src/sudo.c.nowaitopt sudo-1.8.6p3/src/sudo.c
+--- sudo-1.8.6p3/src/sudo.c.nowaitopt	2012-09-26 14:06:25.504894811 +0200
++++ sudo-1.8.6p3/src/sudo.c	2012-09-26 13:33:34.306889223 +0200
+@@ -552,6 +552,11 @@ command_info_to_details(char * const inf
+ 		    }
+ 		    break;
+ 		}
++		if (strncmp("cmnd_no_wait=", info[i], sizeof("cmnd_no_wait=") - 1) == 0) {
++		    if (atobool(info[i] + sizeof("cmnd_no_wait=") - 1) == true)
++			SET(details->flags, CD_DONTWAIT);
++		    break;
++		}
+ 		break;
+ 	    case 'l':
+ 		SET_STRING("login_class=", login_class)
+diff -up sudo-1.8.6p3/src/sudo.h.nowaitopt sudo-1.8.6p3/src/sudo.h
+--- sudo-1.8.6p3/src/sudo.h.nowaitopt	2012-09-26 14:06:20.856892631 +0200
++++ sudo-1.8.6p3/src/sudo.h	2012-09-26 13:19:11.697482212 +0200
+@@ -131,6 +131,7 @@ struct user_details {
+ #define CD_USE_PTY		0x1000
+ #define CD_SET_UTMP		0x2000
+ #define CD_SUDOEDIT_COPY	0x4000
++#define CD_DONTWAIT		0x8000
+ 
+ struct command_details {
+     uid_t uid;

@@ -1,0 +1,24 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/toke.c.doublequotefix sudo-1.8.6p3/plugins/sudoers/toke.c
+--- sudo-1.8.6p3/plugins/sudoers/toke.c.doublequotefix	2014-05-19 14:28:27.536399410 +0200
++++ sudo-1.8.6p3/plugins/sudoers/toke.c	2014-05-19 14:29:51.084714355 +0200
+@@ -1851,7 +1851,7 @@ YY_RULE_SETUP
+ 				LEXTRACE("ERROR "); /* empty string */
+ 				LEXRETURN(ERROR);
+ 			    }
+-			    if (prev_state == INITIAL) {
++			    if (prev_state == INITIAL || prev_state == GOTDEFS) {
+ 				switch (yylval.string[0]) {
+ 				case '%':
+ 				    if (yylval.string[1] == '\0' ||
+diff -up sudo-1.8.6p3/plugins/sudoers/toke.l.doublequotefix sudo-1.8.6p3/plugins/sudoers/toke.l
+--- sudo-1.8.6p3/plugins/sudoers/toke.l.doublequotefix	2014-05-19 14:28:36.932438977 +0200
++++ sudo-1.8.6p3/plugins/sudoers/toke.l	2014-05-19 14:29:27.769626995 +0200
+@@ -197,7 +197,7 @@ DEFVAR			[a-z_]+
+ 				LEXTRACE("ERROR "); /* empty string */
+ 				LEXRETURN(ERROR);
+ 			    }
+-			    if (prev_state == INITIAL) {
++			    if (prev_state == INITIAL || prev_state == GOTDEFS) {
+ 				switch (yylval.string[0]) {
+ 				case '%':
+ 				    if (yylval.string[1] == '\0' ||

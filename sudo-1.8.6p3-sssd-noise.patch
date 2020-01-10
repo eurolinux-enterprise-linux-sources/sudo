@@ -1,0 +1,12 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.sssd-noise sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.sssd-noise	2012-11-29 13:23:43.332760956 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2012-11-29 13:23:57.548816054 +0100
+@@ -350,7 +350,7 @@ static int sudo_sss_setdefs(struct sudo_
+ 
+     if (sss_error == ENOENT) {
+ 	sudo_debug_printf(SUDO_DEBUG_INFO, "The user was not found in SSSD.");
+-	debug_return_int(-1);
++	debug_return_int(0);
+     } else if(sss_error != 0) {
+ 	sudo_debug_printf(SUDO_DEBUG_INFO, "sss_error=%u\n", sss_error);
+ 	debug_return_int(-1);

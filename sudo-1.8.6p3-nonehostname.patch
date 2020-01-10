@@ -1,0 +1,13 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/match.c.nonehostname sudo-1.8.6p3/plugins/sudoers/match.c
+--- sudo-1.8.6p3/plugins/sudoers/match.c.nonehostname	2014-05-19 12:50:08.412313041 +0200
++++ sudo-1.8.6p3/plugins/sudoers/match.c	2014-05-19 12:50:17.787348134 +0200
+@@ -727,7 +727,8 @@ netgr_matches(char *netgr, char *lhost,
+     /* get the domain name (if any) */
+     if (!initialized) {
+ 	domain = (char *) emalloc(MAXHOSTNAMELEN + 1);
+-	if (getdomainname(domain, MAXHOSTNAMELEN + 1) == -1 || *domain == '\0') {
++	if (getdomainname(domain, MAXHOSTNAMELEN + 1) == -1 || *domain == '\0'
++	    || strncmp (domain, "(none)", 7) == 0) {
+ 	    efree(domain);
+ 	    domain = NULL;
+ 	}

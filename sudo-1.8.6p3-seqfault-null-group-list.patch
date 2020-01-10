@@ -1,0 +1,13 @@
+diff -up ./plugins/sudoers/match.c.seqfault-null-group-list ./plugins/sudoers/match.c
+--- ./plugins/sudoers/match.c.seqfault-null-group-list	2015-10-06 14:55:38.034532644 +0200
++++ ./plugins/sudoers/match.c	2015-10-06 15:00:03.821950086 +0200
+@@ -159,6 +159,9 @@ runaslist_matches(struct member_list *us
+     int group_matched = UNSPEC;
+     debug_decl(runaslist_matches, SUDO_DEBUG_MATCH)
+ 
++    if (user_list == NULL)user_list = &empty;
++    if (group_list == NULL)group_list = &empty;
++
+     if (runas_pw != NULL) {
+ 	/* If no runas user or runas group listed in sudoers, use default. */
+ 	if (tq_empty(user_list) && tq_empty(group_list))

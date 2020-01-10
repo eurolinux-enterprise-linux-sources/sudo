@@ -1,0 +1,37 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.unprivileged-list-fix sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.unprivileged-list-fix	2016-03-01 15:43:01.345360925 +0100
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2016-03-01 15:47:27.528760899 +0100
+@@ -2425,12 +2425,12 @@ sudo_ldap_lookup(struct sudo_nss *nss, i
+ 	    /* Only check the command when listing another user. */
+ 	    if (user_uid == 0 || list_pw == NULL ||
+ 		user_uid == list_pw->pw_uid ||
+-		sudo_ldap_check_command(ld, entry, NULL)) {
++		sudo_ldap_check_command(ld, entry, NULL) == true) {
+ 		matched = true;
+ 		break;
+ 	    }
+ 	}
+-	if (matched || user_uid == 0) {
++	if (matched == true || user_uid == 0) {
+ 	    SET(ret, VALIDATE_OK);
+ 	    CLR(ret, VALIDATE_NOT_OK);
+ 	    if (def_authenticate) {
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.unprivileged-list-fix sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.unprivileged-list-fix	2016-03-01 15:43:09.010257262 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2016-03-01 15:44:48.687909159 +0100
+@@ -1059,13 +1059,13 @@ sudo_sss_lookup(struct sudo_nss *nss, in
+ 		/* Only check the command when listing another user. */
+ 		if (user_uid == 0 || list_pw == NULL ||
+ 		    user_uid == list_pw->pw_uid ||
+-		    sudo_sss_check_command(handle, rule, NULL)) {
++		    sudo_sss_check_command(handle, rule, NULL) == true) {
+ 		    matched = true;
+ 		    break;
+ 		}
+ 	    }
+ 	}
+-	if (matched || user_uid == 0) {
++	if (matched == true || user_uid == 0) {
+ 	    SET(ret, VALIDATE_OK);
+ 	    CLR(ret, VALIDATE_NOT_OK);
+ 	    if (def_authenticate) {

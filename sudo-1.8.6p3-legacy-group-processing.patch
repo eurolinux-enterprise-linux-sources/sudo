@@ -1,0 +1,224 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/defaults.c.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/defaults.c
+--- sudo-1.8.6p3/plugins/sudoers/defaults.c.legacy-group-processing	2012-09-18 15:56:29.000000000 +0200
++++ sudo-1.8.6p3/plugins/sudoers/defaults.c	2015-07-15 09:40:30.600853736 +0200
+@@ -362,6 +362,7 @@ init_defaults(void)
+     }
+ 
+     /* First initialize the flags. */
++    def_legacy_group_processing = true;
+ #ifdef LONG_OTP_PROMPT
+     def_long_otp_prompt = true;
+ #endif
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.c.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/def_data.c
+--- sudo-1.8.6p3/plugins/sudoers/def_data.c.legacy-group-processing	2015-07-15 09:40:30.561854082 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.c	2015-07-15 09:40:30.600853736 +0200
+@@ -355,6 +355,10 @@ struct sudo_defs_types sudo_defs_table[]
+         N_("Don't fork and wait for the command to finish, just exec it"),
+         NULL,
+     }, {
++	"legacy_group_processing", T_FLAG,
++	N_("Don't pre-resolve all group names"),
++	NULL,
++    }, {
+ 	NULL, 0, NULL
+     }
+ };
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.h.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/def_data.h
+--- sudo-1.8.6p3/plugins/sudoers/def_data.h.legacy-group-processing	2015-07-15 09:40:30.561854082 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.h	2015-07-15 09:40:30.600853736 +0200
+@@ -164,6 +164,8 @@
+ #define I_LIMITPRIVS            81
+ #define def_cmnd_no_wait        (sudo_defs_table[82].sd_un.flag)
+ #define I_CMND_NO_WAIT          82
++#define def_legacy_group_processing (sudo_defs_table[83].sd_un.flag)
++#define I_LEGACY_GROUP_PROCESSING 83
+ 
+ enum def_tuple {
+ 	never,
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.legacy-group-processing	2015-07-15 09:40:30.596853772 +0200
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2015-07-15 09:40:30.601853727 +0200
+@@ -1150,6 +1150,15 @@ sudo_ldap_build_pass1(struct passwd *pw)
+     }
+     sz += 13 + MAX_UID_T_LEN;
+     if ((grlist = sudo_get_grlist(pw)) != NULL) {
++	if (!grlist->groups_resolved) {
++	    int rc = sudo_resolve_gids(grlist->gids, grlist->ngids,
++				       grlist->groups, grlist->groups_buffer);
++	    if (rc < 0) {
++		return NULL;
++	    }
++	    grlist->ngroups = rc;
++	    grlist->groups_resolved = true;
++	}
+ 	for (i = 0; i < grlist->ngroups; i++) {
+ 	    if (grp != NULL && strcasecmp(grlist->groups[i], grp->gr_name) == 0)
+ 		continue;
+diff -up sudo-1.8.6p3/plugins/sudoers/pwutil.c.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/pwutil.c
+--- sudo-1.8.6p3/plugins/sudoers/pwutil.c.legacy-group-processing	2015-07-15 09:40:30.589853834 +0200
++++ sudo-1.8.6p3/plugins/sudoers/pwutil.c	2015-07-15 09:48:15.734723742 +0200
+@@ -542,10 +542,9 @@ static struct cache_item *
+ make_grlist_item(const char *user, GETGROUPS_T *gids, int ngids)
+ {
+     char *cp;
+-    size_t i, nsize, ngroups, total, len;
++    size_t i, nsize, total;
+     struct cache_item_grlist *grlitem;
+     struct group_list *grlist;
+-    struct group *grp;
+     debug_decl(make_grlist_item, SUDO_DEBUG_NSS)
+ 
+ #ifdef HAVE_SETAUTHDB
+@@ -559,7 +558,6 @@ make_grlist_item(const char *user, GETGR
+     total += sizeof(gid_t *) * ngids;
+     total += GROUPNAME_LEN * ngids;
+ 
+-again:
+     grlitem = ecalloc(1, total);
+ 
+     /*
+@@ -587,27 +585,26 @@ again:
+     for (i = 0; i < ngids; i++)
+ 	grlist->gids[i] = gids[i];
+     grlist->ngids = ngids;
++    grlist->groups_buffer = cp;
+ 
+     /*
+-     * Resolve and store group names by ID.
++     * Resolve and store group names by ID if legacy_group_processing is off.
+      */
+-    ngroups = 0;
+-    for (i = 0; i < ngids; i++) {
+-	if ((grp = sudo_getgrgid(gids[i])) != NULL) {
+-	    len = strlen(grp->gr_name) + 1;
+-	    if (cp - (char *)grlitem + len > total) {
+-		total += len + GROUPNAME_LEN;
+-		efree(grlitem);
+-		sudo_gr_delref(grp);
+-		goto again;
+-	    }
+-	    memcpy(cp, grp->gr_name, len);
+-	    grlist->groups[ngroups++] = cp;
+-	    cp += len;
+-	    sudo_gr_delref(grp);
+-	}
++    if (def_legacy_group_processing) {
++      for (i = 0; i < ngids; i++) {
++	grlist->groups[i] = NULL;
++      }
++      grlist->ngroups = 0;
++      grlist->groups_resolved = false;
++    } else {
++      int rc = sudo_resolve_gids(gids, ngids, grlist->groups, grlist->groups_buffer);
++      if (rc < 0) {
++	efree(grlitem);
++	return NULL;
++      }
++      grlist->ngroups = rc;
++      grlist->groups_resolved = true;
+     }
+-    grlist->ngroups = ngroups;
+ 
+ #ifdef HAVE_SETAUTHDB
+     aix_restoreauthdb();
+@@ -616,6 +613,35 @@ again:
+     debug_return_ptr(&grlitem->cache);
+ }
+ 
++int sudo_resolve_gids(GETGROUPS_T *gids, int ngids, char **groups, char *group_buffer)
++{
++  struct group *grp;
++  int space_left = ngids * GROUPNAME_LEN;
++  int ngroups = 0;
++  int i;
++  char *cp = group_buffer;
++  debug_decl(sudo_resolve_gids, SUDO_DEBUG_NSS)
++
++  for (i = 0; i < ngids; i++) {
++    if ((grp = sudo_getgrgid(gids[i])) != NULL) {
++      int len = strlen(grp->gr_name) + 1;
++
++      if (space_left < len) {
++	sudo_gr_delref(grp);
++	debug_return_int(-1);
++      }
++	  
++      memcpy(cp, grp->gr_name, len);
++      groups[ngroups++] = cp;
++      cp += len;
++      space_left -= len;
++      sudo_gr_delref(grp);
++    }
++  }
++
++  debug_return_int(ngroups);
++}
++
+ void
+ sudo_gr_addref(struct group *gr)
+ {
+@@ -917,8 +943,22 @@ user_in_group(const struct passwd *pw, c
+ 	/*
+ 	 * If it could be a sudo-style group ID check gids first.
+ 	 */
++	bool do_gid_lookup = false;
++	gid_t gid;
++      
+ 	if (group[0] == '#') {
+-	    gid_t gid = atoi(group + 1);
++	    gid = atoi(group + 1);
++	    do_gid_lookup = true;
++	} else if (def_legacy_group_processing) {
++	    struct group *grent = sudo_getgrnam(group);
++	    if (grent == NULL) {
++		goto done;
++	    }
++	    gid = grent->gr_gid;
++	    do_gid_lookup = true;
++	}
++	
++	if (do_gid_lookup) {
+ 	    if (gid == pw->pw_gid) {
+ 		matched = true;
+ 		goto done;
+@@ -931,6 +971,19 @@ user_in_group(const struct passwd *pw, c
+ 	    }
+ 	}
+ 
++	if (def_legacy_group_processing) {
++	    goto done;
++	}
++	if (!grlist->groups_resolved) {
++	    int rc = sudo_resolve_gids(grlist->gids, grlist->ngids,
++				       grlist->groups, grlist->groups_buffer);
++	    if (rc < 0) {
++		goto done;
++	    }
++	    grlist->ngroups = rc;
++	    grlist->groups_resolved = true;
++	}
++
+ 	/*
+ 	 * Next check the supplementary group vector.
+ 	 * It usually includes the password db group too.
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.h.legacy-group-processing sudo-1.8.6p3/plugins/sudoers/sudoers.h
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.h.legacy-group-processing	2015-07-15 09:40:30.589853834 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.h	2015-07-15 09:40:30.601853727 +0200
+@@ -52,6 +52,8 @@ struct group_list {
+     GETGROUPS_T *gids;
+     int ngroups;
+     int ngids;
++    int groups_resolved;
++    char *groups_buffer;
+ };
+ 
+ /*
+@@ -290,6 +292,8 @@ __dso_public struct group *sudo_getgrnam
+ __dso_public void sudo_gr_addref(struct group *);
+ __dso_public void sudo_gr_delref(struct group *);
+ bool user_in_group(const struct passwd *, const char *);
++int sudo_resolve_gids(GETGROUPS_T *gids, int ngids, char **groups, char *group_buffer);
++
+ struct group *sudo_fakegrnam(const char *);
+ struct group_list *sudo_get_grlist(const struct passwd *pw);
+ struct passwd *sudo_fakepwnam(const char *, gid_t);

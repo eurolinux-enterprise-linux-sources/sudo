@@ -1,0 +1,17 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.emallocfail sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.emallocfail	2012-11-23 15:58:20.139417659 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2012-11-23 15:58:26.732437421 +0100
+@@ -212,7 +212,12 @@ sudo_sss_filter_result(struct sudo_sss_h
+ 	sudo_debug_printf(SUDO_DEBUG_DEBUG,
+ 	    "reallocating result: %p (count: %u -> %u)", out_res->rules,
+ 	    in_res->num_rules, l);
+-	out_res->rules = erealloc3(out_res->rules, l, sizeof(struct sss_sudo_rule));
++	if (l > 0)
++	    out_res->rules = erealloc3(out_res->rules, l, sizeof(struct sss_sudo_rule));
++	else {
++	    efree(out_res->rules);
++	    out_res->rules = NULL;
++	}
+     }
+ 
+     out_res->num_rules = l;

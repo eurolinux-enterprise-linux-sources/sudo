@@ -1,0 +1,221 @@
+diff -up sudo-1.8.6p3/configure.in.pam_servicebackport sudo-1.8.6p3/configure.in
+--- sudo-1.8.6p3/configure.in.pam_servicebackport	2015-12-07 15:19:07.851873967 +0100
++++ sudo-1.8.6p3/configure.in	2015-12-07 15:19:07.861873967 +0100
+@@ -118,6 +118,7 @@ AC_SUBST([nsswitch_conf])
+ AC_SUBST([netsvc_conf])
+ AC_SUBST([secure_path])
+ AC_SUBST([editor])
++AC_SUBST([pam_login_service])
+ #
+ # Begin initial values for man page substitution
+ #
+@@ -157,6 +158,7 @@ netsvc_conf=/etc/netsvc.conf
+ noexec_file=/usr/local/libexec/sudo_noexec.so
+ nsswitch_conf=/etc/nsswitch.conf
+ secure_path="not set"
++pam_login_service=sudo
+ #
+ # End initial values for man page substitution
+ #
+@@ -2690,6 +2692,7 @@ if test ${with_pam-"no"} != "no"; then
+ 	    yes)	AC_DEFINE([HAVE_PAM_LOGIN])
+ 			AC_MSG_CHECKING(whether to use PAM login)
+ 			AC_MSG_RESULT(yes)
++			pam_login_service="sudo-i"
+ 			;;
+ 	    no)		;;
+ 	    *)		AC_MSG_ERROR(["--with-pam-login does not take an argument."])
+diff -up sudo-1.8.6p3/configure.pam_servicebackport sudo-1.8.6p3/configure
+--- sudo-1.8.6p3/configure.pam_servicebackport	2012-09-18 15:59:16.000000000 +0200
++++ sudo-1.8.6p3/configure	2015-12-07 15:19:07.863873967 +0100
+@@ -658,6 +658,7 @@ OBJEXT
+ EXEEXT
+ ac_ct_CC
+ CC
++pam_login_service
+ editor
+ secure_path
+ netsvc_conf
+@@ -2955,6 +2956,7 @@ netsvc_conf=/etc/netsvc.conf
+ noexec_file=/usr/local/libexec/sudo_noexec.so
+ nsswitch_conf=/etc/nsswitch.conf
+ secure_path="not set"
++pam_login_service=sudo
+ #
+ # End initial values for man page substitution
+ #
+@@ -18609,6 +18611,7 @@ if test "${with_pam_login+set}" = set; t
+ $as_echo_n "checking whether to use PAM login... " >&6; }
+ 			{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
++			pam_login_service="sudo-i"
+ 			;;
+ 	    no)		;;
+ 	    *)		as_fn_error $? "\"--with-pam-login does not take an argument.\"" "$LINENO" 5
+diff -up sudo-1.8.6p3/doc/sudoers.cat.pam_servicebackport sudo-1.8.6p3/doc/sudoers.cat
+--- sudo-1.8.6p3/doc/sudoers.cat.pam_servicebackport	2015-12-07 15:19:07.852873967 +0100
++++ sudo-1.8.6p3/doc/sudoers.cat	2015-12-07 15:19:07.863873967 +0100
+@@ -1217,6 +1217,18 @@ SSUUDDOOEERRSS OOPPTTIIOONN
+                        noexec file should now be set in the _/_e_t_c_/_s_u_d_o_._c_o_n_f
+                        file.
+ 
++     pam_login_service
++                       On systems that use PAM for authentication, this is the
++                       service name used when the -^H-i^Hi option is specified.  The
++                       default value is ``sudo''.  See the description of
++                       _^Hp_^Ha_^Hm_^H__^Hs_^He_^Hr_^Hv_^Hi_^Hc_^He for more information.
++
++     pam_service       On systems that use PAM for authentication, the service
++                       name specifies the PAM policy to apply.  This usually
++                       corresponds to an entry in the _^Hp_^Ha_^Hm_^H._^Hc_^Ho_^Hn_^Hf file or a fi
++                       in the _^H/_^He_^Ht_^Hc_^H/_^Hp_^Ha_^Hm_^H._^Hd directory.  The default valu
++                       ``sudo''.
++ 
+      passprompt        The default prompt to use when asking for a password;
+                        can be overridden via the --pp option or the SUDO_PROMPT
+                        environment variable.  The following percent (`%')
+diff -up sudo-1.8.6p3/doc/sudoers.man.in.pam_servicebackport sudo-1.8.6p3/doc/sudoers.man.in
+--- sudo-1.8.6p3/doc/sudoers.man.in.pam_servicebackport	2015-12-07 15:19:07.852873967 +0100
++++ sudo-1.8.6p3/doc/sudoers.man.in	2015-12-07 15:19:07.864873966 +0100
+@@ -2587,6 +2587,29 @@ The path to the noexec file should now b
+ \fI@sysconfdir@/sudo.conf\fR
+ file.
+ .TP 18n
++pam_login_service
++.br
++On systems that use PAM for authentication, this is the service
++name used when the
++\fB\-i\fR
++option is specified.
++The default value is
++``\fR@pam_login_service@\fR''.
++See the description of
++\fIpam_service\fR
++for more information.
++.TP 18n
++pam_service
++On systems that use PAM for authentication, the service name
++specifies the PAM policy to apply.
++This usually corresponds to an entry in the
++\fIpam.conf\fR
++file or a file in the
++\fI/etc/pam.d\fR
++directory.
++The default value is
++``\fRsudo\fR''.
++.TP 18n
+ passprompt
+ The default prompt to use when asking for a password; can be overridden via the
+ \fB\-p\fR
+diff -up sudo-1.8.6p3/doc/sudoers.mdoc.in.pam_servicebackport sudo-1.8.6p3/doc/sudoers.mdoc.in
+--- sudo-1.8.6p3/doc/sudoers.mdoc.in.pam_servicebackport	2015-12-07 15:19:07.853873967 +0100
++++ sudo-1.8.6p3/doc/sudoers.mdoc.in	2015-12-07 15:19:07.864873966 +0100
+@@ -2429,6 +2429,26 @@ This option is no longer supported.
+ The path to the noexec file should now be set in the
+ .Pa @sysconfdir@/sudo.conf
+ file.
++.It pam_login_service
++On systems that use PAM for authentication, this is the service
++name used when the
++.Fl i
++option is specified.
++The default value is
++.Dq Li @pam_login_service@ .
++See the description of
++.Em pam_service
++for more information.
++.It pam_service
++On systems that use PAM for authentication, the service name
++specifies the PAM policy to apply.
++This usually corresponds to an entry in the
++.Pa pam.conf
++file or a file in the
++.Pa /etc/pam.d
++directory.
++The default value is
++.Dq Li sudo .
+ .It passprompt
+ The default prompt to use when asking for a password; can be overridden via the
+ .Fl p
+diff -up sudo-1.8.6p3/plugins/sudoers/auth/pam.c.pam_servicebackport sudo-1.8.6p3/plugins/sudoers/auth/pam.c
+--- sudo-1.8.6p3/plugins/sudoers/auth/pam.c.pam_servicebackport	2015-12-07 15:19:07.841873968 +0100
++++ sudo-1.8.6p3/plugins/sudoers/auth/pam.c	2015-12-07 15:19:07.864873966 +0100
+@@ -90,12 +90,8 @@ sudo_pam_init(struct passwd *pw, sudo_au
+     if (auth != NULL)
+ 	auth->data = (void *) &pam_status;
+     pam_conv.conv = converse;
+-#ifdef HAVE_PAM_LOGIN
+-    if (ISSET(sudo_mode, MODE_LOGIN_SHELL))
+-	pam_status = pam_start("sudo-i", pw->pw_name, &pam_conv, &pamh);
+-    else
+-#endif
+-	pam_status = pam_start("sudo", pw->pw_name, &pam_conv, &pamh);
++    pam_status = pam_start(ISSET(sudo_mode, MODE_LOGIN_SHELL) ?
++    def_pam_login_service : def_pam_service, pw->pw_name, &pam_conv, &pamh);
+     if (pam_status != PAM_SUCCESS) {
+ 	log_error(USE_ERRNO|NO_MAIL, _("unable to initialize PAM"));
+ 	debug_return_int(AUTH_FATAL);
+diff -up sudo-1.8.6p3/plugins/sudoers/defaults.c.pam_servicebackport sudo-1.8.6p3/plugins/sudoers/defaults.c
+--- sudo-1.8.6p3/plugins/sudoers/defaults.c.pam_servicebackport	2015-12-07 15:19:07.856873967 +0100
++++ sudo-1.8.6p3/plugins/sudoers/defaults.c	2015-12-07 15:19:07.864873966 +0100
+@@ -424,6 +424,13 @@ init_defaults(void)
+     def_env_reset = ENV_RESET;
+     def_set_logname = true;
+     def_closefrom = STDERR_FILENO + 1;
++    def_pam_service = estrdup("sudo");
++#ifdef HAVE_PAM_LOGIN
++    def_pam_login_service = estrdup("sudo-i");
++#else
++    def_pam_login_service = estrdup("sudo");
++#endif
++
+ 
+     /* Syslog options need special care since they both strings and ints */
+ #if (LOGGING & SLOG_SYSLOG)
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.c.pam_servicebackport sudo-1.8.6p3/plugins/sudoers/def_data.c
+--- sudo-1.8.6p3/plugins/sudoers/def_data.c.pam_servicebackport	2015-12-07 15:19:07.864873966 +0100
++++ sudo-1.8.6p3/plugins/sudoers/def_data.c	2015-12-07 16:10:44.248663975 +0100
+@@ -363,6 +363,14 @@ struct sudo_defs_types sudo_defs_table[]
+ 	N_("Use both user and host/domain fields when matching netgroups"),
+ 	NULL,
+     }, {
++	"pam_service", T_STR,
++	N_("PAM service name to use"),
++	NULL,
++    }, {
++	"pam_login_service", T_STR,
++	N_("PAM service name to use for login shells"),
++	NULL,
++    }, {
+ 	NULL, 0, NULL
+     }
+ };
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.h.pam_servicebackport sudo-1.8.6p3/plugins/sudoers/def_data.h
+--- sudo-1.8.6p3/plugins/sudoers/def_data.h.pam_servicebackport	2015-12-07 15:19:07.865873966 +0100
++++ sudo-1.8.6p3/plugins/sudoers/def_data.h	2015-12-07 16:01:48.880700283 +0100
+@@ -168,6 +168,11 @@
+ #define I_LEGACY_GROUP_PROCESSING 83
+ #define def_netgroup_tuple      (sudo_defs_table[84].sd_un.flag)
+ #define I_NETGROUP_TUPLE        84
++#define def_pam_service         (sudo_defs_table[85].sd_un.str)
++#define I_PAM_SERVICE           85
++#define def_pam_login_service   (sudo_defs_table[86].sd_un.str)
++#define I_PAM_LOGIN_SERVICE     86
++
+ 
+ enum def_tuple {
+ 	never,
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.in.pam_servicebackport sudo-1.8.6p3/plugins/sudoers/def_data.in
+--- sudo-1.8.6p3/plugins/sudoers/def_data.in.pam_servicebackport	2012-09-18 15:56:29.000000000 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.in	2015-12-07 15:19:07.865873966 +0100
+@@ -259,3 +259,10 @@ privs
+ limitprivs
+ 	T_STR
+ 	"Set of limit privileges"
++pam_service
++       T_STR
++       "PAM service name to use"
++pam_login_service
++       T_STR
++       "PAM service name to use for login shells"
++

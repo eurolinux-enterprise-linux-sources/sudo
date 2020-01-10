@@ -1,0 +1,12 @@
+diff -up sudo-1.8.6p3/doc/sudoers.man.in.mantypo sudo-1.8.6p3/doc/sudoers.man.in
+--- sudo-1.8.6p3/doc/sudoers.man.in.mantypo	2012-09-24 16:38:33.946465411 +0200
++++ sudo-1.8.6p3/doc/sudoers.man.in	2012-09-24 16:39:01.400941691 +0200
+@@ -1408,7 +1408,7 @@ to include the file
+ The
+ \fR#includedir\fR
+ directive can be used to create a
+-\fIsudo.d\fR
++\fIsudoers.d\fR
+ directory that the system package manager can drop
+ \fIsudoers\fR
+ rules

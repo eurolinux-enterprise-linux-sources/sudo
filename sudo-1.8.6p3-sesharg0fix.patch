@@ -1,0 +1,12 @@
+diff -up sudo-1.8.6p3/src/sesh.c.arg0fix sudo-1.8.6p3/src/sesh.c
+--- sudo-1.8.6p3/src/sesh.c.arg0fix	2014-05-19 12:47:29.326716729 +0200
++++ sudo-1.8.6p3/src/sesh.c	2014-05-19 12:47:51.810798125 +0200
+@@ -214,6 +214,8 @@ cleanup_0:
+         if (argv[-1][0] == '-') {
+             if ((cp = strrchr(argv[0], '/')) == NULL)
+                 cp = argv[0];
++            else
++                argv[0] = cp;
+             *cp = '-';
+         }
+         sudo_execve(cmnd, argv, envp, noexec);

@@ -1,0 +1,77 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/logging.c.logsudouser sudo-1.8.6p3/plugins/sudoers/logging.c
+--- sudo-1.8.6p3/plugins/sudoers/logging.c.logsudouser	2013-08-12 23:04:33.664124186 +0200
++++ sudo-1.8.6p3/plugins/sudoers/logging.c	2013-08-12 23:03:40.795895164 +0200
+@@ -146,7 +146,7 @@ do_syslog(int pri, char *msg)
+      * Log the full line, breaking into multiple syslog(3) calls if necessary
+      */
+     fmt = _(FMT_FIRST);
+-    maxlen = MAXSYSLOGLEN - (strlen(fmt) - 5 + strlen(user_name));
++    maxlen = MAXSYSLOGLEN - (strlen(fmt) - 5 + strlen(sudo_user_name));
+     for (p = msg; *p != '\0'; ) {
+ 	len = strlen(p);
+ 	if (len > maxlen) {
+@@ -162,7 +162,7 @@ do_syslog(int pri, char *msg)
+ 	    save = *tmp;
+ 	    *tmp = '\0';
+ 
+-	    mysyslog(pri, fmt, user_name, p);
++	    mysyslog(pri, fmt, sudo_user_name, p);
+ 
+ 	    *tmp = save;			/* restore saved character */
+ 
+@@ -170,11 +170,11 @@ do_syslog(int pri, char *msg)
+ 	    for (p = tmp; *p == ' '; p++)
+ 		;
+ 	} else {
+-	    mysyslog(pri, fmt, user_name, p);
++	    mysyslog(pri, fmt, sudo_user_name, p);
+ 	    p += len;
+ 	}
+ 	fmt = _(FMT_CONTD);
+-	maxlen = MAXSYSLOGLEN - (strlen(fmt) - 5 + strlen(user_name));
++	maxlen = MAXSYSLOGLEN - (strlen(fmt) - 5 + strlen(sudo_user_name));
+     }
+ 
+ #ifdef HAVE_SETLOCALE
+@@ -216,17 +216,17 @@ do_logfile(char *msg)
+ 	    /* Don't pretty-print long log file lines (hard to grep) */
+ 	    if (def_log_host)
+ 		(void) fprintf(fp, "%s : %s : HOST=%s : %s\n",
+-		    get_timestr(now, def_log_year), user_name, user_shost, msg);
++		    get_timestr(now, def_log_year), sudo_user_name, user_shost, msg);
+ 	    else
+ 		(void) fprintf(fp, "%s : %s : %s\n",
+-		    get_timestr(now, def_log_year), user_name, msg);
++		    get_timestr(now, def_log_year), sudo_user_name, msg);
+ 	} else {
+ 	    if (def_log_host)
+ 		len = easprintf(&full_line, "%s : %s : HOST=%s : %s",
+-		    get_timestr(now, def_log_year), user_name, user_shost, msg);
++		    get_timestr(now, def_log_year), sudo_user_name, user_shost, msg);
+ 	    else
+ 		len = easprintf(&full_line, "%s : %s : %s",
+-		    get_timestr(now, def_log_year), user_name, msg);
++		    get_timestr(now, def_log_year), sudo_user_name, msg);
+ 
+ 	    /*
+ 	     * Print out full_line with word wrap around def_loglinelen chars.
+@@ -689,7 +689,7 @@ send_mail(const char *fmt, ...)
+ #endif /* HAVE_NL_LANGINFO */
+ 
+     (void) fprintf(mail, "\n\n%s : %s : %s : ", user_host,
+-	get_timestr(time(NULL), def_log_year), user_name);
++	get_timestr(time(NULL), def_log_year), sudo_user_name);
+     va_start(ap, fmt);
+     (void) vfprintf(mail, fmt, ap);
+     va_end(ap);
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.h.logsudouser sudo-1.8.6p3/plugins/sudoers/sudoers.h
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.h.logsudouser	2013-08-12 23:04:42.955164613 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.h	2013-08-12 23:05:17.216314120 +0200
+@@ -168,6 +168,7 @@ struct sudo_user {
+ /*
+  * Shortcuts for sudo_user contents.
+  */
++#define sudo_user_name		(sudo_user.pw->pw_name)
+ #define user_name		(sudo_user.name)
+ #define user_uid		(sudo_user.uid)
+ #define user_gid		(sudo_user.gid)

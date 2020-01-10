@@ -1,0 +1,134 @@
+diff -up sudo-1.8.6p3/common/sudo_debug.c.sudoorderfix sudo-1.8.6p3/common/sudo_debug.c
+--- sudo-1.8.6p3/common/sudo_debug.c.sudoorderfix	2015-02-27 19:00:15.546968602 +0100
++++ sudo-1.8.6p3/common/sudo_debug.c	2015-02-27 19:01:33.966134891 +0100
+@@ -272,6 +272,13 @@ void sudo_debug_exit_ptr(const char *fun
+ 	"<- %s @ %s:%d := %p", func, file, line, rval);
+ }
+ 
++void sudo_debug_exit_double(const char *func, const char *file, int line,
++    int subsys, double rval)
++{
++    sudo_debug_printf2(NULL, NULL, 0, subsys | SUDO_DEBUG_TRACE,
++	"<- %s @ %s:%d := %f", func, file, line, rval);
++}
++
+ static void
+ sudo_debug_write_conv(const char *func, const char *file, int lineno,
+     const char *str, int len, int errno_val)
+diff -up sudo-1.8.6p3/include/sudo_debug.h.sudoorderfix sudo-1.8.6p3/include/sudo_debug.h
+--- sudo-1.8.6p3/include/sudo_debug.h.sudoorderfix	2015-02-27 18:57:26.015770964 +0100
++++ sudo-1.8.6p3/include/sudo_debug.h	2015-02-27 18:59:27.375480734 +0100
+@@ -166,6 +166,14 @@
+ 	return (void *)sudo_debug_rval;					       \
+     } while (0)
+ 
++#define debug_return_double(rval)					        \
++    do {								        \
++	double sudo_debug_rval = (rval);					\
++	sudo_debug_exit_double(__func__, __FILE__, __LINE__, sudo_debug_subsys, \
++	    sudo_debug_rval);						        \
++	return sudo_debug_rval;						        \
++    } while (0)
++
+ /*
+  * Variadic macros are a C99 feature but GNU cpp has supported
+  * a (different) version of them for a long time.
+@@ -193,6 +201,7 @@ void sudo_debug_enter(const char *func,
+ void sudo_debug_execve2(int level, const char *path, char *const argv[], char *const envp[]);
+ void sudo_debug_exit(const char *func, const char *file, int line, int subsys);
+ void sudo_debug_exit_int(const char *func, const char *file, int line, int subsys, int rval);
++void sudo_debug_exit_double(const char *func, const char *file, int line, int subsys, double rval);
+ void sudo_debug_exit_long(const char *func, const char *file, int line, int subsys, long rval);
+ void sudo_debug_exit_size_t(const char *func, const char *file, int line, int subsys, size_t rval);
+ void sudo_debug_exit_bool(const char *func, const char *file, int line, int subsys, int rval);
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.sudoorderfix sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.sudoorderfix	2015-02-27 18:53:18.259404975 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2015-02-27 19:04:10.217473712 +0100
+@@ -696,6 +696,74 @@ sudo_sss_result_filterp(struct sudo_sss_
+ 	debug_return_int(0);
+ }
+ 
++static double sudo_sss_rule_get_sudoOrder(struct sudo_sss_handle *handle, struct sss_sudo_rule *rule)
++{
++  char **val_array = NULL;
++  int i;
++
++  debug_decl(sudo_sss_rule_get_sudoOrder, SUDO_DEBUG_SSSD);
++
++  if (!rule) {
++    debug_return_double(-1);
++  }
++
++  switch (handle->fn_get_values(rule, "sudoOrder", &val_array)) {
++  case 0:
++    break;
++  case ENOENT:
++    /* default sudoOrder is 0 */
++    debug_return_double(0);
++  default:
++    sudo_debug_printf(SUDO_DEBUG_INFO, "handle->fn_get_values(sudoUser): != 0");
++    debug_return_double(-1);
++  }
++
++  if (val_array == NULL) {
++    sudo_debug_printf(SUDO_DEBUG_DEBUG,
++		      "BUG: val_array not allocated after a successful call to fn_get_values");
++    debug_return_double(-1);
++  }
++
++  /* Use the last sudoOrder value if there are more than one */
++  i = 0;
++  while (val_array[i] != NULL) {
++    if (val_array[i+1] == NULL) {
++      sudo_debug_printf(SUDO_DEBUG_DEBUG, "using sudoOrder value \"%s\"", val_array[i]);
++      double val = atof(val_array[i]);
++      handle->fn_free_values(val_array);
++      debug_return_double(val);
++    }
++    ++i;
++  }
++
++  /* We should get here in a normal case */
++  handle->fn_free_values(val_array);
++  sudo_debug_printf(SUDO_DEBUG_DEBUG,
++		    "fn_get_values call was successful but no values were stored in the array!");
++  debug_return_double(0);
++}
++
++static int sudo_sss_rule_order_compare(const void *a, const void *b, void *arg)
++{
++  struct sudo_sss_handle *handle = (struct sudo_sss_handle *)arg;
++  struct sss_sudo_rule *rule_a = (struct sss_sudo_rule *)a;
++  struct sss_sudo_rule *rule_b = (struct sss_sudo_rule *)b;
++  debug_decl(sudo_sss_rule_order_compare, SUDO_DEBUG_SSSD);
++
++  const double a_order = sudo_sss_rule_get_sudoOrder(handle, rule_a);
++  const double b_order = sudo_sss_rule_get_sudoOrder(handle, rule_b);
++
++  if (a_order > b_order) {
++    debug_return_int(-1);
++  }
++  else if (a_order < b_order) {
++    debug_return_int(1);
++  }
++  else {
++    debug_return_int(0);
++  }
++}
++
+ static struct sss_sudo_result *
+ sudo_sss_result_get(struct sudo_nss *nss, struct passwd *pw, uint32_t *state)
+ {
+@@ -761,6 +829,12 @@ sudo_sss_result_get(struct sudo_nss *nss
+ 	"u_sss_result=(%p, %u) => f_sss_result=(%p, %u)", u_sss_result,
+ 	u_sss_result->num_rules, f_sss_result, f_sss_result->num_rules);
+ 
++    sudo_debug_printf(SUDO_DEBUG_INFO,
++		      "Sorting the remaining entries using the sudoOrder attribute");
++
++    qsort_r(f_sss_result->rules, f_sss_result->num_rules, sizeof(f_sss_result->rules[0]),
++	    sudo_sss_rule_order_compare, handle);
++
+     handle->fn_free_result(u_sss_result);
+ 
+     debug_return_ptr(f_sss_result);

@@ -1,0 +1,12 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/visudo.c.fix sudo-1.8.6p3/plugins/sudoers/visudo.c
+--- sudo-1.8.6p3/plugins/sudoers/visudo.c.fix	2015-07-22 11:29:03.899122767 +0200
++++ sudo-1.8.6p3/plugins/sudoers/visudo.c	2015-07-22 11:29:33.001826535 +0200
+@@ -201,7 +201,7 @@ main(int argc, char *argv[])
+ 		strict = true;		/* strict mode */
+ 		break;
+ 	    case 'q':
+-		quiet = false;		/* quiet mode */
++		quiet = true;		/* quiet mode */
+ 		break;
+ 	    default:
+ 		usage(1);

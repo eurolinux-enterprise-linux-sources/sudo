@@ -1,0 +1,27 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.ldapsearchuidfix sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.ldapsearchuidfix	2015-12-14 10:13:16.940861298 +0100
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2015-12-14 10:13:16.942861298 +0100
+@@ -1149,8 +1149,8 @@ sudo_ldap_build_pass1(struct passwd *pw)
+     if (ldap_conf.search_filter)
+ 	sz += strlen(ldap_conf.search_filter);
+ 
+-    /* Then add (|(sudoUser=USERNAME)(sudoUser=ALL)) + NUL */
+-    sz += 29 + sudo_ldap_value_len(pw->pw_name);
++    /* Then add (|(sudoUser=USERNAME)(sudoUser=#uid)(sudoUser=ALL)) + NUL */
++    sz += 29 + (12 + MAX_UID_T_LEN) + sudo_ldap_value_len(pw->pw_name);
+ 
+     /* Add space for primary and supplementary groups and gids */
+     if ((grp = sudo_getgrgid(pw->pw_gid)) != NULL) {
+@@ -1200,6 +1200,12 @@ sudo_ldap_build_pass1(struct passwd *pw)
+     (void) sudo_ldap_value_cat(buf, pw->pw_name, sz);
+     (void) strlcat(buf, ")", sz);
+ 
++    /* Append user uid */
++    (void) snprintf(gidbuf, sizeof(gidbuf), "%u", (unsigned int)pw->pw_uid);
++    (void) strlcat(buf, "(sudoUser=#", sz);
++    (void) strlcat(buf, gidbuf, sz);
++    (void) strlcat(buf, ")", sz);
++
+     /* Append primary group and gid */
+     if (grp != NULL) {
+ 	(void) strlcat(buf, "(sudoUser=%", sz);

@@ -1,0 +1,104 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/match.c.constwarnfix sudo-1.8.6p3/plugins/sudoers/match.c
+--- sudo-1.8.6p3/plugins/sudoers/match.c.constwarnfix	2014-07-30 13:47:48.270007851 +0200
++++ sudo-1.8.6p3/plugins/sudoers/match.c	2014-07-30 13:47:07.327759179 +0200
+@@ -599,7 +599,7 @@ command_matches_dir(char *sudoers_dir, s
+  * Returns true if the hostname matches the pattern, else false
+  */
+ bool
+-hostname_matches(char *shost, char *lhost, char *pattern)
++hostname_matches(const char *shost, const char *lhost, const char *pattern)
+ {
+     debug_decl(hostname_matches, SUDO_DEBUG_MATCH)
+ 
+@@ -621,7 +621,7 @@ hostname_matches(char *shost, char *lhos
+  *  else returns false.
+  */
+ bool
+-userpw_matches(char *sudoers_user, char *user, struct passwd *pw)
++userpw_matches(const char *sudoers_user, const char *user, const struct passwd *pw)
+ {
+ 	debug_decl(userpw_matches, SUDO_DEBUG_MATCH)
+ 	if (pw != NULL && *sudoers_user == '#') {
+@@ -640,7 +640,7 @@ userpw_matches(char *sudoers_user, char
+  *  else returns false.
+  */
+ bool
+-group_matches(char *sudoers_group, struct group *gr)
++group_matches(const char *sudoers_group, const struct group *gr)
+ {
+ 	debug_decl(group_matches, SUDO_DEBUG_MATCH)
+ 	if (*sudoers_group == '#') {
+@@ -659,7 +659,7 @@ group_matches(char *sudoers_group, struc
+  *  else returns false.
+  */
+ bool
+-usergr_matches(char *group, char *user, struct passwd *pw)
++usergr_matches(const char *group, const char *user, const struct passwd *pw)
+ {
+     int matched = false;
+     struct passwd *pw0 = NULL;
+@@ -707,7 +707,7 @@ done:
+  * XXX - swap order of host & shost
+  */
+ bool
+-netgr_matches(char *netgr, char *lhost, char *shost, char *user)
++netgr_matches(const char *netgr, const char *lhost, const char *shost, const char *user)
+ {
+     static char *domain;
+ #ifdef HAVE_GETDOMAINNAME
+diff -up sudo-1.8.6p3/plugins/sudoers/parse.h.constwarnfix sudo-1.8.6p3/plugins/sudoers/parse.h
+--- sudo-1.8.6p3/plugins/sudoers/parse.h.constwarnfix	2014-07-30 13:47:39.205174182 +0200
++++ sudo-1.8.6p3/plugins/sudoers/parse.h	2014-07-30 13:47:08.602735779 +0200
+@@ -188,11 +188,11 @@ bool addr_matches(char *n);
+ 
+ /* match.c */
+ bool command_matches(char *sudoers_cmnd, char *sudoers_args);
+-bool group_matches(char *sudoers_group, struct group *gr);
+-bool hostname_matches(char *shost, char *lhost, char *pattern);
+-bool netgr_matches(char *netgr, char *lhost, char *shost, char *user);
+-bool usergr_matches(char *group, char *user, struct passwd *pw);
+-bool userpw_matches(char *sudoers_user, char *user, struct passwd *pw);
++bool group_matches(const char *sudoers_group, const struct group *gr);
++bool hostname_matches(const char *shost, const char *lhost, const char *pattern);
++bool netgr_matches(const char *netgr, const char *lhost, const char *shost, const char *user);
++bool usergr_matches(const char *group, const char *user, const struct passwd *pw);
++bool userpw_matches(const char *sudoers_user, const char *user, const struct passwd *pw);
+ int cmnd_matches(struct member *m);
+ int cmndlist_matches(struct member_list *list);
+ int hostlist_matches(struct member_list *list);
+diff -up sudo-1.8.6p3/plugins/sudoers/pwutil.c.constwarnfix sudo-1.8.6p3/plugins/sudoers/pwutil.c
+--- sudo-1.8.6p3/plugins/sudoers/pwutil.c.constwarnfix	2014-07-30 13:50:25.681120795 +0200
++++ sudo-1.8.6p3/plugins/sudoers/pwutil.c	2014-07-30 13:51:59.998391934 +0200
+@@ -841,7 +841,7 @@ sudo_endgrent(void)
+ }
+ 
+ struct group_list *
+-sudo_get_grlist(struct passwd *pw)
++sudo_get_grlist(const struct passwd *pw)
+ {
+     struct cache_item key, *item;
+     struct rbnode *node;
+@@ -905,7 +905,7 @@ done:
+ }
+ 
+ bool
+-user_in_group(struct passwd *pw, const char *group)
++user_in_group(const struct passwd *pw, const char *group)
+ {
+     struct group_list *grlist;
+     struct group *grp = NULL;
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.h.constwarnfix sudo-1.8.6p3/plugins/sudoers/sudoers.h
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.h.constwarnfix	2014-07-30 13:50:09.704413719 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.h	2014-07-30 13:51:57.991428715 +0200
+@@ -289,9 +289,9 @@ __dso_public struct group *sudo_getgrgid
+ __dso_public struct group *sudo_getgrnam(const char *);
+ __dso_public void sudo_gr_addref(struct group *);
+ __dso_public void sudo_gr_delref(struct group *);
+-bool user_in_group(struct passwd *, const char *);
++bool user_in_group(const struct passwd *, const char *);
+ struct group *sudo_fakegrnam(const char *);
+-struct group_list *sudo_get_grlist(struct passwd *pw);
++struct group_list *sudo_get_grlist(const struct passwd *pw);
+ struct passwd *sudo_fakepwnam(const char *, gid_t);
+ struct passwd *sudo_fakepwnamid(const char *user, uid_t uid, gid_t gid);
+ struct passwd *sudo_getpwnam(const char *);

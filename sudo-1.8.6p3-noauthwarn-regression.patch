@@ -1,0 +1,77 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/audit.c.orig sudo-1.8.6p3/plugins/sudoers/audit.c
+--- sudo-1.8.6p3/plugins/sudoers/audit.c.orig	2012-11-07 13:04:55.424637797 +0100
++++ sudo-1.8.6p3/plugins/sudoers/audit.c	2012-11-07 13:06:53.705032954 +0100
+@@ -26,6 +26,11 @@
+ #  include <stdlib.h>
+ # endif
+ #endif /* STDC_HEADERS */
++#ifdef HAVE_STDBOOL_H
++# include <stdbool.h>
++#else
++# include "compat/stdbool.h"
++#endif /* HAVE_STDBOOL_H */
+ #include <stdarg.h>
+ 
+ #include "missing.h"
+diff -up sudo-1.8.6p3/plugins/sudoers/logging.c.orig sudo-1.8.6p3/plugins/sudoers/logging.c
+--- sudo-1.8.6p3/plugins/sudoers/logging.c.orig	2012-11-07 13:04:55.424637797 +0100
++++ sudo-1.8.6p3/plugins/sudoers/logging.c	2012-11-07 13:06:53.705032954 +0100
+@@ -247,14 +247,20 @@ do_logfile(char *msg)
+ }
+ 
+ /*
+- * Log and mail the denial message, optionally informing the user.
++ * Log, audit and mail the denial message, optionally informing the user.
+  */
+-static void
++void
+ log_denial(int status, bool inform_user)
+ {
+     char *logline, *message;
+     debug_decl(log_denial, SUDO_DEBUG_LOGGING)
+ 
++    /* Handle auditing first. */
++    if (ISSET(status, FLAG_NO_USER | FLAG_NO_HOST))
++	audit_failure(NewArgv, _("No user or host"));
++    else
++	audit_failure(NewArgv, _("validation failure"));
++
+     /* Set error message. */
+     if (ISSET(status, FLAG_NO_USER))
+ 	message = _("user NOT in sudoers");
+@@ -312,12 +318,6 @@ log_failure(int status, int flags)
+     debug_decl(log_failure, SUDO_DEBUG_LOGGING)
+     bool inform_user = true;
+ 
+-    /* Handle auditing first. */
+-    if (ISSET(status, FLAG_NO_USER | FLAG_NO_HOST))
+-	audit_failure(NewArgv, _("No user or host"));
+-    else
+-	audit_failure(NewArgv, _("validation failure"));
+-
+     /* The user doesn't always get to see the log message (path info). */
+     if (!ISSET(status, FLAG_NO_USER | FLAG_NO_HOST) && def_path_info &&
+ 	(flags == NOT_FOUND_DOT || flags == NOT_FOUND))
+diff -up sudo-1.8.6p3/plugins/sudoers/logging.h.orig sudo-1.8.6p3/plugins/sudoers/logging.h
+--- sudo-1.8.6p3/plugins/sudoers/logging.h.orig	2012-11-07 13:04:55.425637802 +0100
++++ sudo-1.8.6p3/plugins/sudoers/logging.h	2012-11-07 13:06:53.706032965 +0100
+@@ -56,6 +56,7 @@ void audit_success(char *exec_args[]);
+ void audit_failure(char *exec_args[], char const *const fmt, ...);
+ void log_allowed(int status);
+ void log_auth_failure(int status, int tries);
++void log_denial(int status, bool inform_user);
+ void log_failure(int status, int flags);
+ void log_error(int flags, const char *fmt, ...) __printflike(2, 3);
+ void log_fatal(int flags, const char *fmt, ...) __printflike(2, 3) __attribute__((__noreturn__));
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.c.orig sudo-1.8.6p3/plugins/sudoers/sudoers.c
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.c.orig	2012-11-07 13:04:55.425637802 +0100
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.c	2012-11-07 13:06:53.706032965 +0100
+@@ -466,7 +466,7 @@ sudoers_policy_main(int argc, char * con
+     rval = check_user(validated, sudo_mode);
+     if (rval != true) {
+ 	if (!ISSET(validated, VALIDATE_OK))
+-	    log_failure(validated, cmnd_status);
++	    log_denial(validated, false);
+ 	goto done;
+     }
+ 

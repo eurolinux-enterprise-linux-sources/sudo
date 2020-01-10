@@ -1,0 +1,26 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/auth/pam.c.authinterrupt sudo-1.8.6p3/plugins/sudoers/auth/pam.c
+--- sudo-1.8.6p3/plugins/sudoers/auth/pam.c.authinterrupt	2014-05-22 13:46:31.204706184 +0200
++++ sudo-1.8.6p3/plugins/sudoers/auth/pam.c	2014-05-22 13:47:06.729830043 +0200
+@@ -167,13 +167,13 @@ sudo_pam_verify(struct passwd *pw, char
+ 	    /* FALLTHROUGH */
+ 	case PAM_AUTH_ERR:
+ 	case PAM_AUTHINFO_UNAVAIL:
++	case PAM_PERM_DENIED:
+ 	    if (getpass_error) {
+ 		/* error or ^C from tgetpass() */
+ 		debug_return_int(AUTH_INTR);
+ 	    }
+ 	    /* FALLTHROUGH */
+ 	case PAM_MAXTRIES:
+-	case PAM_PERM_DENIED:
+ 	    debug_return_int(AUTH_FAILURE);
+ 	default:
+ 	    if ((s = pam_strerror(pamh, *pam_status)))
+@@ -343,6 +343,7 @@ converse(int num_msg, PAM_CONST struct p
+ 		if (pass == NULL) {
+ 		    /* Error (or ^C) reading password, don't try again. */
+ 		    getpass_error = 1;
++		    ret = PAM_CONV_ERR;
+ #if (defined(__darwin__) || defined(__APPLE__)) && !defined(OPENPAM_VERSION)
+ 		    pass = "";
+ #else

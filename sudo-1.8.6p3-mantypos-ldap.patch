@@ -1,0 +1,74 @@
+diff -up sudo-1.8.6p3/doc/sudoers.ldap.cat.mantypos-ldap sudo-1.8.6p3/doc/sudoers.ldap.cat
+--- sudo-1.8.6p3/doc/sudoers.ldap.cat.mantypos-ldap	2012-09-18 15:57:43.000000000 +0200
++++ sudo-1.8.6p3/doc/sudoers.ldap.cat	2015-04-16 11:24:08.277692534 +0200
+@@ -119,7 +119,7 @@ DDEESSCCRRIIPPTTIIOONN
+      ssuuddooNNoottAAfftteerr
+            A timestamp in the form yyyymmddHHMMSSZ that indicates an
+            expiration date/time, after which the sudoRole will no longer be
+-           valid.  If multiple sudoNotBefore entries are present, the last one
++           valid.  If multiple sudoNotAfter entries are present, the last one
+            is used.  Note that timestamps must be in Coordinated Universal
+            Time (UTC), not the local timezone.  The minute and seconds
+            portions are optional, but some LDAP servers require that they be
+@@ -134,8 +134,8 @@ DDEESSCCRRIIPPTTIIOONN
+            inherent order.  The sudoOrder attribute is an integer (or floating
+            point value for LDAP servers that support it) that is used to sort
+            the matching entries.  This allows LDAP-based sudoers entries to
+-           more closely mimic the behaviour of the sudoers file, where the of
+-           the entries influences the result.  If multiple entries match, the
++           more closely mimic the behaviour of the sudoers file, where the order
++           of the entries influences the result.  If multiple entries match, the
+            entry with the highest sudoOrder attribute is chosen.  This
+            corresponds to the ``last match'' behavior of the sudoers file.  If
+            the sudoOrder attribute is not present, a value of 0 is assumed.
+diff -up sudo-1.8.6p3/doc/sudoers.ldap.man.in.mantypos-ldap sudo-1.8.6p3/doc/sudoers.ldap.man.in
+--- sudo-1.8.6p3/doc/sudoers.ldap.man.in.mantypos-ldap	2012-09-18 15:57:43.000000000 +0200
++++ sudo-1.8.6p3/doc/sudoers.ldap.man.in	2015-04-16 11:24:08.277692534 +0200
+@@ -238,7 +238,7 @@ that indicates an expiration date/time,
+ \fRsudoRole\fR
+ will no longer be valid.
+ If multiple
+-\fRsudoNotBefore\fR
++\fRsudoNotAfter\fR
+ entries are present, the last one is used.
+ Note that timestamps must be in Coordinated Universal Time (UTC),
+ not the local timezone.
+@@ -264,7 +264,7 @@ The
+ attribute is an integer (or floating point value for LDAP servers
+ that support it) that is used to sort the matching entries.
+ This allows LDAP-based sudoers entries to more closely mimic the behaviour
+-of the sudoers file, where the of the entries influences the result.
++of the sudoers file, where the order of the entries influences the result.
+ If multiple entries match, the entry with the highest
+ \fRsudoOrder\fR
+ attribute is chosen.
+diff -up sudo-1.8.6p3/doc/sudoers.ldap.mdoc.in.mantypos-ldap sudo-1.8.6p3/doc/sudoers.ldap.mdoc.in
+--- sudo-1.8.6p3/doc/sudoers.ldap.mdoc.in.mantypos-ldap	2012-09-18 15:57:43.000000000 +0200
++++ sudo-1.8.6p3/doc/sudoers.ldap.mdoc.in	2015-04-16 11:32:51.574469447 +0200
+@@ -15,7 +15,7 @@
+ .\" ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ .\"
+ .Dd July 12, 2012
+-.Dt SUDOERS.LDAP @mansectsu@
++.Dt SUDOERS.LDAP @mansectform@
+ .Os Sudo @PACKAGE_VERSION@
+ .Sh NAME
+ .Nm sudoers.ldap
+@@ -224,7 +224,7 @@ that indicates an expiration date/time,
+ .Li sudoRole
+ will no longer be valid.
+ If multiple
+-.Li sudoNotBefore
++.Li sudoNotAfter
+ entries are present, the last one is used.
+ Note that timestamps must be in Coordinated Universal Time (UTC),
+ not the local timezone.
+@@ -249,7 +249,7 @@ The
+ attribute is an integer (or floating point value for LDAP servers
+ that support it) that is used to sort the matching entries.
+ This allows LDAP-based sudoers entries to more closely mimic the behaviour
+-of the sudoers file, where the of the entries influences the result.
++of the sudoers file, where the order of the entries influences the result.
+ If multiple entries match, the entry with the highest
+ .Li sudoOrder
+ attribute is chosen.

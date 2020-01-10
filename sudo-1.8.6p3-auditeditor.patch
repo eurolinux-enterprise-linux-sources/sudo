@@ -1,0 +1,29 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/sudoers.c.auditeditor sudo-1.8.6p3/plugins/sudoers/sudoers.c
+--- sudo-1.8.6p3/plugins/sudoers/sudoers.c.auditeditor	2012-09-24 16:16:07.577331344 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sudoers.c	2012-09-24 16:30:16.738174293 +0200
+@@ -709,7 +709,24 @@ sudoers_policy_main(int argc, char * con
+ #endif /* HAVE_SELINUX */
+ 
+     /* Must audit before uid change. */
+-    audit_success(NewArgv);
++    if (ISSET(sudo_mode, MODE_EDIT)) {
++        /*
++        * Build a new argv, argc for the audit system
++        * so that the editor being invoked is visible
++        * in audit messages.
++        */
++        char  *editor = NULL;
++        char **editor_argv = NULL;
++
++        editor = find_editor(NewArgc - 1, NewArgv + 1, &editor_argv);
++
++        if (editor) {
++            audit_success(editor_argv);
++            efree(editor_argv);
++        } else
++            errorx(1, _("Can't find an editor"));
++    } else
++        audit_success(NewArgv);
+ 
+     *command_infop = command_info;
+ 

@@ -1,0 +1,14 @@
+diff -up sudo-1.8.6p3/src/sudo.c.orig sudo-1.8.6p3/src/sudo.c
+--- sudo-1.8.6p3/src/sudo.c.orig	2015-11-23 18:19:45.051010282 +1000
++++ sudo-1.8.6p3/src/sudo.c	2015-11-23 18:19:57.795997701 +1000
+@@ -482,6 +482,9 @@ get_user_info(struct user_details *ud)
+ 	    errorx(1, _("unable to allocate memory"));
+ 	ud->cwd = user_info[i] + sizeof("cwd=") - 1;
+     }
++    else {
++	errorx(1, _("unable to resolve current working directory"));
++    }
+ 
+     if ((cp = get_process_ttyname()) != NULL) {
+ 	user_info[++i] = fmt_string("tty", cp);
+

@@ -1,0 +1,12 @@
+diff -up ./plugins/sudoers/sssd.c.mailfix ./plugins/sudoers/sssd.c
+--- ./plugins/sudoers/sssd.c.mailfix	2015-12-15 15:11:20.353612132 +0100
++++ ./plugins/sudoers/sssd.c	2015-12-15 15:11:46.048374417 +0100
+@@ -788,7 +788,7 @@ sudo_sss_result_get(struct sudo_nss *nss
+ 	switch (sss_error) {
+ 	case 0:
+ 	    if (u_sss_result != NULL) {
+-		if (state != NULL) {
++		if (state != NULL && u_sss_result->num_rules > 0) {
+ 		    sudo_debug_printf(SUDO_DEBUG_DEBUG, "state |= USERMATCH");
+ 		    *state |= _SUDO_SSS_STATE_USERMATCH;
+ 		}

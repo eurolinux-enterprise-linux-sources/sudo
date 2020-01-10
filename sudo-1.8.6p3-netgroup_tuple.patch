@@ -1,0 +1,194 @@
+diff -up sudo-1.8.6p3/plugins/sudoers/defaults.c.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/defaults.c
+--- sudo-1.8.6p3/plugins/sudoers/defaults.c.netgroup_tuple	2015-09-24 09:47:12.302832111 +0200
++++ sudo-1.8.6p3/plugins/sudoers/defaults.c	2015-09-24 09:49:55.637827777 +0200
+@@ -362,6 +362,7 @@ init_defaults(void)
+     }
+ 
+     /* First initialize the flags. */
++    def_netgroup_tuple = false;
+     def_legacy_group_processing = true;
+ #ifdef LONG_OTP_PROMPT
+     def_long_otp_prompt = true;
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.c.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/def_data.c
+--- sudo-1.8.6p3/plugins/sudoers/def_data.c.netgroup_tuple	2015-09-24 09:34:23.073852520 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.c	2015-09-24 09:54:40.369820222 +0200
+@@ -359,6 +359,10 @@ struct sudo_defs_types sudo_defs_table[]
+ 	N_("Don't pre-resolve all group names"),
+ 	NULL,
+     }, {
++	"netgroup_tuple", T_FLAG,
++	N_("Use both user and host/domain fields when matching netgroups"),
++	NULL,
++    }, {
+ 	NULL, 0, NULL
+     }
+ };
+diff -up sudo-1.8.6p3/plugins/sudoers/def_data.h.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/def_data.h
+--- sudo-1.8.6p3/plugins/sudoers/def_data.h.netgroup_tuple	2015-09-24 09:34:29.321852355 +0200
++++ sudo-1.8.6p3/plugins/sudoers/def_data.h	2015-09-24 09:46:53.325832614 +0200
+@@ -166,6 +166,8 @@
+ #define I_CMND_NO_WAIT          82
+ #define def_legacy_group_processing (sudo_defs_table[83].sd_un.flag)
+ #define I_LEGACY_GROUP_PROCESSING 83
++#define def_netgroup_tuple      (sudo_defs_table[84].sd_un.flag)
++#define I_NETGROUP_TUPLE        84
+ 
+ enum def_tuple {
+ 	never,
+diff -up sudo-1.8.6p3/plugins/sudoers/ldap.c.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/ldap.c
+--- sudo-1.8.6p3/plugins/sudoers/ldap.c.netgroup_tuple	2015-09-24 09:59:12.779812995 +0200
++++ sudo-1.8.6p3/plugins/sudoers/ldap.c	2015-09-24 10:39:44.523748475 +0200
+@@ -635,8 +635,12 @@ sudo_ldap_check_user_netgroup(LDAP *ld,
+     for (p = bv; *p != NULL && !ret; p++) {
+ 	val = (*p)->bv_val;
+ 	/* match any */
+-	if (netgr_matches(val, NULL, NULL, user))
+-	    ret = true;
++	if (netgr_matches(val,
++        def_netgroup_tuple ? user_host : NULL,
++        def_netgroup_tuple ? user_shost : NULL,
++        user)) {
++    ret = true;
++  }
+ 	DPRINTF(("ldap sudoUser netgroup '%s' ... %s", val,
+ 	    ret ? "MATCH!" : "not"), 2 + ((ret) ? 0 : 1));
+     }
+@@ -651,7 +655,7 @@ sudo_ldap_check_user_netgroup(LDAP *ld,
+ * host match, else false.
+ */
+ static bool
+-sudo_ldap_check_host(LDAP *ld, LDAPMessage *entry)
++sudo_ldap_check_host(LDAP *ld, LDAPMessage *entry, char *user)
+ {
+     struct berval **bv, **p;
+     char *val;
+@@ -671,7 +675,7 @@ sudo_ldap_check_host(LDAP *ld, LDAPMessa
+ 	val = (*p)->bv_val;
+ 	/* match any or address or netgroup or hostname */
+ 	if (!strcmp(val, "ALL") || addr_matches(val) ||
+-	    netgr_matches(val, user_host, user_shost, NULL) ||
++	    netgr_matches(val, user_host, user_shost, def_netgroup_tuple ? user : NULL) ||
+ 	    hostname_matches(user_shost, user_host, val))
+ 	    ret = true;
+ 	DPRINTF(("ldap sudoHost '%s' ... %s", val,
+@@ -728,7 +732,10 @@ sudo_ldap_check_runas_user(LDAP *ld, LDA
+ 	val = (*p)->bv_val;
+ 	switch (val[0]) {
+ 	case '+':
+-	    if (netgr_matches(val, NULL, NULL, runas_pw->pw_name))
++	    if (netgr_matches(val,
++            def_netgroup_tuple ? user_host : NULL,
++            def_netgroup_tuple ? user_shost : NULL,
++            runas_pw->pw_name))
+ 		ret = true;
+ 	    break;
+ 	case '%':
+@@ -2679,13 +2686,13 @@ sudo_ldap_result_get(struct sudo_nss *ns
+ 	    LDAP_FOREACH(entry, ld, result) {
+ 	      if (do_netgr) {
+ 		if (sudo_ldap_check_user_netgroup(ld, entry, pw->pw_name) &&
+-		    sudo_ldap_check_host(ld, entry)) {
++		    sudo_ldap_check_host(ld, entry, pw->pw_name)) {
+ 		  lres->host_matches = true;
+ 		  lres->user_matches = true;
+ 		  sudo_ldap_result_add_entry(lres, entry);
+ 		}
+ 	      } else {
+-		if (sudo_ldap_check_host(ld, entry)) {
++		if (sudo_ldap_check_host(ld, entry, pw->pw_name)) {
+ 		  lres->host_matches = true;
+ 		  sudo_ldap_result_add_entry(lres, entry);
+ 		}
+diff -up sudo-1.8.6p3/plugins/sudoers/match.c.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/match.c
+--- sudo-1.8.6p3/plugins/sudoers/match.c.netgroup_tuple	2015-09-24 10:49:42.271732615 +0200
++++ sudo-1.8.6p3/plugins/sudoers/match.c	2015-09-24 10:57:40.555719925 +0200
+@@ -115,7 +115,10 @@ userlist_matches(struct passwd *pw, stru
+ 		matched = !m->negated;
+ 		break;
+ 	    case NETGROUP:
+-		if (netgr_matches(m->name, NULL, NULL, pw->pw_name))
++		if (netgr_matches(m->name, 
++          def_netgroup_tuple ? user_host : NULL,
++          def_netgroup_tuple ? user_shost : NULL,
++          pw->pw_name))
+ 		    matched = !m->negated;
+ 		break;
+ 	    case USERGROUP:
+@@ -170,7 +173,10 @@ runaslist_matches(struct member_list *us
+ 		    user_matched = !m->negated;
+ 		    break;
+ 		case NETGROUP:
+-		    if (netgr_matches(m->name, NULL, NULL, runas_pw->pw_name))
++		    if (netgr_matches(m->name,
++              def_netgroup_tuple ? user_host : NULL,
++              def_netgroup_tuple ? user_shost : NULL,
++              runas_pw->pw_name))
+ 			user_matched = !m->negated;
+ 		    break;
+ 		case USERGROUP:
+@@ -267,7 +273,7 @@ hostlist_matches(struct member_list *lis
+ 		matched = !m->negated;
+ 		break;
+ 	    case NETGROUP:
+-		if (netgr_matches(m->name, user_host, user_shost, NULL))
++		if (netgr_matches(m->name, user_host, user_shost, def_netgroup_tuple ? user_name : NULL))
+ 		    matched = !m->negated;
+ 		break;
+ 	    case NTWKADDR:
+diff -up sudo-1.8.6p3/plugins/sudoers/sssd.c.netgroup_tuple sudo-1.8.6p3/plugins/sudoers/sssd.c
+--- sudo-1.8.6p3/plugins/sudoers/sssd.c.netgroup_tuple	2015-09-24 10:41:40.376745401 +0200
++++ sudo-1.8.6p3/plugins/sudoers/sssd.c	2015-09-24 10:48:56.699733824 +0200
+@@ -451,7 +451,10 @@ sudo_sss_check_runas_user(struct sudo_ss
+ 	switch (val[0]) {
+ 	case '+':
+ 	    sudo_debug_printf(SUDO_DEBUG_DEBUG, "netgr_");
+-	    if (netgr_matches(val, NULL, NULL, runas_pw->pw_name)) {
++	    if (netgr_matches(val,
++            def_netgroup_tuple ? user_host : NULL,
++            def_netgroup_tuple ? user_shost : NULL,
++            runas_pw->pw_name)) {
+ 		sudo_debug_printf(SUDO_DEBUG_DEBUG, "=> match");
+ 		ret = true;
+ 	    }
+@@ -550,7 +553,7 @@ sudo_sss_check_runas(struct sudo_sss_han
+     debug_return_bool(ret);
+ }
+ 
+-static bool sudo_sss_ipa_hostname_matches(const char *hostname_val)
++static bool sudo_sss_ipa_hostname_matches(const char *hostname_val, char *user)
+ {
+ 	bool ret = false;
+ 	char *ipa_hostname_val;
+@@ -558,7 +561,7 @@ static bool sudo_sss_ipa_hostname_matche
+ 
+ 	if ((ipa_hostname_val = ipa_hostname()) != NULL) {
+ 		ret = hostname_matches(ipa_hostname_val, ipa_hostname_val, hostname_val) || \
+-		      netgr_matches(hostname_val, ipa_hostname_val, ipa_hostname_val, NULL);
++		      netgr_matches(hostname_val, ipa_hostname_val, ipa_hostname_val, def_netgroup_tuple ? user : NULL);
+ 	}
+ 
+ 	sudo_debug_printf(SUDO_DEBUG_TRACE, "IPA hostname (%s) matches %s => %s",
+@@ -599,8 +602,9 @@ sudo_sss_check_host(struct sudo_sss_hand
+ 
+ 	/* match any or address or netgroup or hostname */
+ 	if (!strcmp(val, "ALL") || addr_matches(val) ||
+-	    sudo_sss_ipa_hostname_matches(val) ||
+-	    netgr_matches(val, user_host, user_shost, NULL) ||
++	    sudo_sss_ipa_hostname_matches(val, handle->pw->pw_name) ||
++	    netgr_matches(val, user_host, user_shost,
++	       def_netgroup_tuple ? handle->pw->pw_name : NULL) ||
+ 	    hostname_matches(user_shost, user_host, val))
+ 	    ret = true;
+ 
+@@ -648,7 +652,10 @@ bool sudo_sss_filter_sudoUser(struct sud
+ 		sudo_debug_printf(SUDO_DEBUG_DEBUG, "val[%d]=%s", i, val);
+ 		if (*val == '+') {
+ 			/* Netgroup spec found, check netgroup membership */
+-			if (netgr_matches(val, NULL, NULL, handle->pw->pw_name)) {
++			if (netgr_matches(val,
++						def_netgroup_tuple ? user_host : NULL,
++						def_netgroup_tuple ? user_shost : NULL,
++						handle->pw->pw_name)) {
+ 				ret = true;
+ 				sudo_debug_printf(SUDO_DEBUG_DIAG,
+ 						  "sssd/ldap sudoUser '%s' ... MATCH! (%s)", val, handle->pw->pw_name);
