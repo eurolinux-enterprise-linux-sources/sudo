@@ -1,0 +1,161 @@
+diff -up ./plugins/sudoers/logging.c.loggingperms ./plugins/sudoers/logging.c
+--- ./plugins/sudoers/logging.c.loggingperms	2016-10-06 16:43:14.509092792 +0200
++++ ./plugins/sudoers/logging.c	2016-10-06 16:46:13.491679481 +0200
+@@ -271,6 +271,9 @@ log_denial(int status, bool inform_user)
+ 
+     logline = new_logline(message, 0);
+ 
++    /* Become root if we are not already. */
++    set_perms(PERM_ROOT|PERM_NOEXIT);
++
+     if (should_mail(status))
+ 	send_mail("%s", logline);	/* send mail based on status */
+ 
+@@ -305,6 +308,8 @@ log_denial(int status, bool inform_user)
+     if (def_logfile)
+ 	do_logfile(logline);
+ 
++    restore_perms();
++
+     efree(logline);
+     debug_return;
+ }
+@@ -395,6 +400,9 @@ log_allowed(int status)
+ 
+     logline = new_logline(NULL, 0);
+ 
++    /* Become root if we are not already. */
++    set_perms(PERM_ROOT|PERM_NOEXIT);
++
+     if (should_mail(status))
+ 	send_mail("%s", logline);	/* send mail based on status */
+ 
+@@ -406,6 +414,8 @@ log_allowed(int status)
+     if (def_logfile)
+ 	do_logfile(logline);
+ 
++    restore_perms();
++
+     efree(logline);
+     debug_return;
+ }
+diff -up ./plugins/sudoers/set_perms.c.loggingperms ./plugins/sudoers/set_perms.c
+--- ./plugins/sudoers/set_perms.c.loggingperms	2016-10-06 16:46:30.112083938 +0200
++++ ./plugins/sudoers/set_perms.c	2016-10-06 16:56:45.151045834 +0200
+@@ -179,8 +179,16 @@ set_perms(int perm)
+ 	    goto bad;
+ 	}
+ 	state->rgid = ostate->rgid;
+-	state->egid = ostate->egid;
++	state->egid = ROOT_GID;
+ 	state->sgid = ostate->sgid;
++        sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++            "[%d, %d, %d] -> [%d, %d, %d]", __func__,
++            (int)ostate->rgid, (int)ostate->egid, (int)ostate->sgid,
++            (int)state->rgid, (int)state->egid, (int)state->sgid);
++        if (GID_CHANGED && setresgid(ID(rgid), ID(egid), ID(sgid))) {
++            strlcpy(errbuf, _("unable to change to root gid"), sizeof(errbuf));
++            goto bad;
++        }
+ 	state->grlist = ostate->grlist;
+ 	sudo_grlist_addref(state->grlist);
+ 	break;
+@@ -481,8 +489,16 @@ set_perms(int perm)
+ 	    goto bad;
+ 	}
+ 	state->rgid = ostate->rgid;
+-	state->egid = ostate->egid;
++	state->egid = ROOT_GID;
+ 	state->sgid = ostate->sgid;
++        sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++            "[%d, %d, %d] -> [%d, %d, %d]", __func__,
++            (int)ostate->rgid, (int)ostate->egid, (int)ostate->sgid,
++            (int)state->rgid, (int)state->egid, (int)state->sgid);
++        if (GID_CHANGED && setgidx(ID_EFFECTIVE, ROOT_GID)) {
++            strlcpy(errbuf, _("unable to change to root gid"), sizeof(errbuf));
++            goto bad;
++        }
+ 	state->grlist = ostate->grlist;
+ 	sudo_grlist_addref(state->grlist);
+ 	break;
+@@ -879,7 +895,15 @@ set_perms(int perm)
+ 	    }
+ 	}
+ 	state->rgid = ostate->rgid;
+-	state->egid = ostate->rgid;
++        state->egid = ROOT_GID;
++        sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++            "[%d, %d] -> [%d, %d]", __func__, (int)ostate->rgid,
++            (int)ostate->egid, (int)state->rgid, (int)state->egid);
++        if (GID_CHANGED && setregid(ID(rgid), ID(egid))) {
++            snprintf(errbuf, sizeof(errbuf),
++                "PERM_ROOT: setregid(%d, %d)", ID(rgid), ID(egid));
++            goto bad;
++        }
+ 	state->grlist = ostate->grlist;
+ 	sudo_grlist_addref(state->grlist);
+ 	break;
+@@ -1165,7 +1189,14 @@ set_perms(int perm)
+ 	state->ruid = ROOT_UID;
+ 	state->euid = ROOT_UID;
+ 	state->rgid = ostate->rgid;
+-	state->egid = ostate->egid;
++        state->egid = ROOT_GID;
++        sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++            "[%d, %d] -> [%d, %d]", __func__, (int)ostate->rgid,
++            (int)ostate->egid, ROOT_GID, ROOT_GID);
++        if (GID_CHANGED && setegid(ROOT_GID)) {
++            strlcpy(errbuf, _("unable to change to root gid"), sizeof(errbuf));
++            goto bad;
++        }
+ 	state->grlist = ostate->grlist;
+ 	sudo_grlist_addref(state->grlist);
+ 	break;
+@@ -1421,7 +1452,7 @@ set_perms(int perm)
+ 
+     case PERM_ROOT:
+ 	state->ruid = ROOT_UID;
+-	state->rgid = ostate->rgid;
++	state->rgid = ROOT_GID;
+ 	state->grlist = ostate->grlist;
+ 	sudo_grlist_addref(state->grlist);
+ 	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: uid: "
+@@ -1430,11 +1461,17 @@ set_perms(int perm)
+ 	    snprintf(errbuf, sizeof(errbuf), "PERM_ROOT: setuid(%d)", ROOT_UID);
+ 	    goto bad;
+ 	}
++        sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++            "[%d] -> [%d]", __func__, (int)ostate->rgid, (int)state->rgid);
++        if (setgid(ROOT_GID)) {
++            strlcpy(errbuf, _("unable to change to root gid"), sizeof(errbuf));
++            goto bad;
++        }
+ 	break;
+ 
+     case PERM_FULL_USER:
+ 	state->rgid = user_gid;
+-	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: gid: "
++	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_FULL_USER: gid: "
+ 	    "[%d] -> [%d]", __func__, (int)ostate->rgid, (int)state->rgid);
+ 	(void) setgid(user_gid);
+ 	state->grlist = user_group_list;
+@@ -1446,7 +1483,7 @@ set_perms(int perm)
+ 	    }
+ 	}
+ 	state->ruid = user_uid;
+-	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_ROOT: uid: "
++	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: PERM_FULL_USER: uid: "
+ 	    "[%d] -> [%d]", __func__, (int)ostate->ruid, (int)state->ruid);
+ 	if (setuid(user_uid)) {
+ 	    snprintf(errbuf, sizeof(errbuf),
+diff -up ./plugins/sudoers/sudoers.h.loggingperms ./plugins/sudoers/sudoers.h
+--- ./plugins/sudoers/sudoers.h.loggingperms	2016-10-06 16:56:55.842662731 +0200
++++ ./plugins/sudoers/sudoers.h	2016-10-06 16:59:04.615048554 +0200
+@@ -208,6 +208,7 @@ struct sudo_user {
+ #else
+ # define ROOT_UID       0
+ #endif
++#define ROOT_GID	0
+ 
+ /*
+  * We used to use the system definition of PASS_MAX or _PASSWD_LEN,

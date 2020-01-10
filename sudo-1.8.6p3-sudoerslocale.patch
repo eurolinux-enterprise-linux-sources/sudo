@@ -1,0 +1,46 @@
+diff -up ./plugins/sudoers/sudoers.c.sudoerslocale ./plugins/sudoers/sudoers.c
+--- ./plugins/sudoers/sudoers.c.sudoerslocale	2016-10-06 18:02:34.926199094 +0200
++++ ./plugins/sudoers/sudoers.c	2016-10-06 18:05:09.660837351 +0200
+@@ -146,6 +146,7 @@ sudoers_policy_open(unsigned int version
+     sigaction_t sa;
+     struct sudo_nss *nss;
+     struct sudo_nss *nss_next;
++    char *oldlocale;
+     debug_decl(sudoers_policy_open, SUDO_DEBUG_PLUGIN)
+ 
+     sudo_version = version;
+@@ -201,7 +202,17 @@ sudoers_policy_open(unsigned int version
+     set_perms(PERM_INITIAL);
+     set_perms(PERM_ROOT);
+ 
+-    /* Open and parse sudoers, set global defaults */
++    /*
++     *  Open and parse sudoers, set global defaults.
++     *  Uses the C locale unless another is specified in sudoers.
++     */
++#ifdef HAVE_SETLOCALE
++    if (!(oldlocale = setlocale(LC_ALL, def_sudoers_locale))) {
++        warningx(_("unable to set locale to \"%s\", using \"C\""), def_sudoers_locale);
++        setlocale(LC_ALL, "C");
++    }
++#endif
++
+     for (nss = snl->first; nss != NULL; nss = nss_next) {
+         nss_next = nss->next;
+         if (nss->open(nss) == 0 && nss->parse(nss) == 0) {
+@@ -250,6 +261,15 @@ sudoers_policy_open(unsigned int version
+ 
+     restore_perms();
+ 
++    /* Restore user's locale. */
++#ifdef HAVE_SETLOCALE
++    if (oldlocale)
++        setlocale(LC_ALL, oldlocale);
++    else
++        warningx(_("unable to restore user's locale, the C locale remains"));
++#endif
++
++
+     debug_return_bool(true);
+ }
+ 

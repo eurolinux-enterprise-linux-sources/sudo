@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.6p3
-Release: 25%{?dist}
+Release: 27%{?dist}
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -128,8 +128,16 @@ Patch48: sudo-1.8.6p3-null_exception.patch
 Patch49: sudo-1.8.6p7-closefrom-override-fix.patch
 # 1312481 - non-root user can list privileges of other users
 Patch50: sudo-1.8.6p3-unprivileged-list-fix.patch
-# 1391937 - CVE-2016-7032 CVE-2016-7076 sudo: various flaws [rhel-6.8.z]
-Patch51: sudo-1.8.6p3-noexec-update.patch
+# 1330001 - Fix sudo log file wrong group ownership
+Patch51: sudo-1.8.6p3-loggingperms.patch
+# 1374410 - Fix "sudo -l command" in the LDAP and SSS backends when the command is not allowed.
+Patch52: sudo-1.8.6p3-ldap-sssd-notallowedcmnd.patch
+# 1318374 - Fix sudo parsing sudoers with user's locale
+Patch53: sudo-1.8.6p3-sudoerslocale.patch
+# 1365156 - Fix race condition when creating /var/log/sudo-io direcotry
+Patch54: sudo-1.8.6p3-iologracecondition.patch
+# 1391938 - CVE-2016-7032 CVE-2016-7076 sudo: various flaws [rhel-6.9]
+Patch55: sudo-1.8.6p3-noexec-update.patch
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -204,7 +212,11 @@ plugins that use %{name}.
 %patch48 -p1 -b .nullexception
 %patch49 -p1 -b .closefrom-override-fix
 %patch50 -p1 -b .unprivileged-list-fix
-%patch51 -p1 -b .noexec-update
+%patch51 -p1 -b .loggingperms
+%patch52 -p1 -b .ldap-sssd-notallowedcmnd
+%patch53 -p1 -b .sudoerslocale
+%patch54 -p1 -b .iologracecondition
+%patch55 -p1 -b .noexec-update
 
 %build
 autoreconf -I m4 -fv --install
@@ -321,10 +333,25 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
-* Thu Nov 24 2016 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-25
+* Thu Nov 24 2016 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-27
 - Update noexec syscall blacklist
 - Fixes CVE-2016-7032 and CVE-2016-7076
-  Resolves: rhbz#1391937
+  Resolves: rhbz#1391938
+
+* Tue Oct 18 2016 Tomas Sykora <tosykora@redhat.com> - 1.8.6p3-26
+- RHEL-6.9 erratum
+  - Fix race condition when creating /var/log/sudo-io direcotry
+  Resolves: rhbz#1365156
+
+* Thu Oct 06 2016 Tomas Sykora <tosykora@redhat.com> - 1.8.6p3-25
+- RHEL-6.9 erratum
+  - Fix "sudo -l command" in the LDAP and SSS backends when the command
+    is not allowed.
+  Resolves: rhbz#1374410
+  - Fix sudo log file wrong group ownership
+  Resolves: rhbz#1330001
+  - Fix sudo parsing sudoers with user's locale
+  Resolves: rhbz#1318374
 
 * Tue Mar 01 2016 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-24
 - RHEL-6.8 erratum

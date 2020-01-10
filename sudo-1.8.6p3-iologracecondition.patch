@@ -1,0 +1,45 @@
+diff -up ./plugins/sudoers/iolog.c.iologracecondition ./plugins/sudoers/iolog.c
+--- ./plugins/sudoers/iolog.c.iologracecondition	2016-10-06 18:09:37.226616830 +0200
++++ ./plugins/sudoers/iolog.c	2016-10-06 18:20:28.930151862 +0200
+@@ -118,11 +118,15 @@ mkdir_parents(char *path)
+ 	if ((slash = strchr(slash + 1, '/')) == NULL)
+ 	    break;
+ 	*slash = '\0';
+-	if (stat(path, &sb) != 0) {
+-	    if (mkdir(path, S_IRWXU) != 0)
++	if (mkdir(path, S_IRWXU) != 0) {
++	    int mkdir_errno = errno;
++	    if (stat(path, &sb)) {
++		errno = mkdir_errno;
+ 		log_fatal(USE_ERRNO, _("unable to mkdir %s"), path);
+-	} else if (!S_ISDIR(sb.st_mode)) {
+-	    log_fatal(0, _("%s: %s"), path, strerror(ENOTDIR));
++	    }
++	    if (!S_ISDIR(sb.st_mode)) {
++		log_fatal(0, _("%s: %s"), path, strerror(ENOTDIR));
++	    }
+ 	}
+ 	*slash = '/';
+     }
+@@ -151,12 +155,16 @@ io_nextid(char *iolog_dir, char *iolog_d
+      * Create I/O log directory if it doesn't already exist.
+      */
+     mkdir_parents(iolog_dir);
+-    if (stat(iolog_dir, &sb) != 0) {
+-	if (mkdir(iolog_dir, S_IRWXU) != 0)
+-	    log_fatal(USE_ERRNO, _("unable to mkdir %s"), iolog_dir);
+-    } else if (!S_ISDIR(sb.st_mode)) {
+-	log_fatal(0, _("%s exists but is not a directory (0%o)"),
++    if (mkdir(iolog_dir, S_IRWXU) != 0) {
++	int mkdir_errno = errno;
++	if (stat(iolog_dir, &sb)) {
++	    errno = mkdir_errno;
++	    log_fatal(USE_ERRNO, _("unable to mkdir %s"), iolog_dir);
++	}
++	if (!S_ISDIR(sb.st_mode)) {
++	    log_fatal(0, _("%s exists but is not a directory (0%o)"),
+ 	    iolog_dir, (unsigned int) sb.st_mode);
++	}
+     }
+ 
+     /*

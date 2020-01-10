@@ -1,0 +1,30 @@
+diff -up ./plugins/sudoers/ldap.c.ldap-sssd-notallowedcmnd ./plugins/sudoers/ldap.c
+--- ./plugins/sudoers/ldap.c.ldap-sssd-notallowedcmnd	2016-10-06 17:52:12.958313455 +0200
++++ ./plugins/sudoers/ldap.c	2016-10-06 17:53:10.880256349 +0200
+@@ -1932,8 +1932,9 @@ sudo_ldap_display_cmnd(struct sudo_nss *
+     lres = sudo_ldap_result_get(nss, pw);
+     for (i = 0; i < lres->nentries; i++) {
+ 	entry = lres->entries[i].entry;
+-	if (sudo_ldap_check_command(ld, entry, NULL) &&
+-	    sudo_ldap_check_runas(ld, entry)) {
++	if (!sudo_ldap_check_runas(ld, entry))
++	    continue;
++	if (sudo_ldap_check_command(ld, entry, NULL) == true) {
+ 	    found = true;
+ 	    goto done;
+ 	}
+diff -up ./plugins/sudoers/sssd.c.ldap-sssd-notallowedcmnd ./plugins/sudoers/sssd.c
+--- ./plugins/sudoers/sssd.c.ldap-sssd-notallowedcmnd	2016-10-06 17:54:17.885876637 +0200
++++ ./plugins/sudoers/sssd.c	2016-10-06 17:55:26.530435388 +0200
+@@ -1173,8 +1173,9 @@ sudo_sss_display_cmnd(struct sudo_nss *n
+ 
+     for (i = 0; i < sss_result->num_rules; i++) {
+ 	rule = sss_result->rules + i;
+-	if (sudo_sss_check_command(handle, rule, NULL) &&
+-	    sudo_sss_check_runas(handle, rule)) {
++	if (!sudo_sss_check_runas(handle, rule))
++	    continue;
++	if (sudo_sss_check_command(handle, rule, NULL) == true) {
+ 	    found = true;
+ 	    goto done;
+ 	}
