@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.6p3
-Release: 29%{?dist}
+Release: 29%{?dist}.2
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -138,11 +138,13 @@ Patch53: sudo-1.8.6p3-sudoerslocale.patch
 Patch54: sudo-1.8.6p3-iologracecondition.patch
 # 1391938 - CVE-2016-7032 CVE-2016-7076 sudo: various flaws [rhel-6.9]
 Patch55: sudo-1.8.6p3-noexec-update.patch
-# 1455399 - CVE-2017-1000367 sudo: Privilege escalation in via improper get_process_ttyname() parsing [rhel-6.9.z]
+# 1455400 - CVE-2017-1000367 sudo: Privilege escalation in via improper get_process_ttyname() parsing [rhel-6.10]
 Patch56: sudo-1.8.6p3-tty-parsing.patch
-# 1459408 - CVE-2017-1000368 sudo: Privilege escalation via improper get_process_ttyname() parsing (insufficient fix for CVE-2017-1000367) [rhel-6.9.z]
+# 1459409 - CVE-2017-1000368 sudo: Privilege escalation via improper get_process_ttyname() parsing (insufficient fix for CVE-2017-1000367) [rhel-6.10]
 Patch57: sudo-1.8.6p7-CVE-2017-1000368.patch
 
+# 1760684 - CVE-2019-14287 sudo: Privilege escalation via 'Runas' specification with 'ALL' keyword [rhel-6.10.z]
+Patch58: sudo-1.8.6p7-CVE-strtouid.patch
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -224,6 +226,8 @@ plugins that use %{name}.
 %patch55 -p1 -b .noexec-update
 %patch56 -p1 -b .tty-parsing
 %patch57 -p1 -b .CVE-2017-1000368
+
+%patch58 -p1 -b .CVE-strtouid
 
 %build
 autoreconf -I m4 -fv --install
@@ -340,13 +344,19 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
+* Mon Oct 21 2019 Radovan Sroka <rsroka@redhat.com> - 1.8.6p3-29.2
+- RHEL-6.10.z ERRATUM
+- fixed CVE-2019-14287
+  Resolves: rhbz#1760684
+
+
 * Wed Jun 07 2017 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-29
 - Fixes CVE-2017-1000368
-  Resolves: rhbz#1459408
+  Resolves: rhbz#1459409
 
 * Mon May 29 2017 Radovan Sroka <rsroka@redhat.com> - 1.8.6p3-28
 - Fixes CVE-2017-1000367
-  Resolves: rhbz#1455399
+  Resolves: rhbz#1455400
 
 * Thu Nov 24 2016 Daniel Kopecek <dkopecek@redhat.com> - 1.8.6p3-27
 - Update noexec syscall blacklist
