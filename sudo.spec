@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.23
-Release: 3%{?dist}
+Release: 4%{?dist}
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -50,7 +50,13 @@ Patch7: sudo-1.8.23-nowaitopt.patch
 #  bz in RHEL. The feature itself was delivered via the rebase to 1.8.23.
 Patch8: sudo-1.8.23-Ignore-PAM_NEW_AUTHTOK_REQD-and-PAM_AUTHTOK_EXPIRED.patch
 # 1547974 - (sudo-rhel-7.6-rebase) Rebase sudo to latest stable upstream version
-Patch9: sudo-1.8.23-fix-double-quote-parsing-for-Defaults-values.patch 
+Patch9: sudo-1.8.23-fix-double-quote-parsing-for-Defaults-values.patch
+
+# 1672876 - Backporting sudo bug with expired passwords
+Patch10: sudo-1.8.23-pam-expired-passwords.patch
+# 1665285 - Problem with sudo-1.8.23 and 'who am i'
+Patch11: sudo-1.8.23-who-am-i.patch
+
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -84,6 +90,9 @@ plugins that use %{name}.
 %patch7 -p1 -b .nowaitopt
 %patch8 -p1 -b .pam-mgmt-ignore-errors
 %patch9 -p1 -b .defaults-double-quote-fix
+
+%patch10 -p1 -b .pam-expired
+%patch11 -p1 -b .who-am-i
 
 %build
 autoreconf -I m4 -fv --install
@@ -222,6 +231,12 @@ rm -rf %{buildroot}
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
+
+* Wed Feb 20 2019 Radovan Sroka <rsroka@redhat.com> 1.8.23-4
+- RHEL-7.7 erratum
+  Resolves: rhbz#1672876 - Backporting sudo bug with expired passwords
+  Resolves: rhbz#1665285 - Problem with sudo-1.8.23 and 'who am i'
+
 * Mon Sep 24 2018 Daniel Kopecek <dkopecek@redhat.com> 1.8.23-3
 - RHEL-7.6 erratum
   Resolves: rhbz#1547974 - Rebase sudo to latest stable upstream version
@@ -318,11 +333,11 @@ rm -rf %{buildroot}
 
 * Wed Mar 08 2017 Tomas Sykora <tosykora@redhat.com> - 1.8.19p2-2
 - RHEL 7.4 erratum
-- Fixes coverity scan issues created by our patches: 
+- Fixes coverity scan issues created by our patches:
   - fixed resource leaks and a compiler warning in digest backport patch
   - removed needless code from cmnd_no_wait patch causing clang warning
   - format of the last changelog message causes problems to rhpkg push,
-    so don't use that as a commit message 
+    so don't use that as a commit message
   Resolves: rhbz#1360687
 
 * Wed Mar 01 2017 Tomas Sykora <tosykora@redhat.com> - 1.8.19p2-1
@@ -331,7 +346,7 @@ rm -rf %{buildroot}
   - Resolves: rhbz#1123526 - performance improvement
   - Resolves: rhbz#1308789 - add MAIL and NOMAIL tags
   - Resolves: rhbz#1348504 - sudo now parses sudoers with sudoers locale
-  - Resolves: rhbz#1374417 - "sudo -l command" indicated that the command 
+  - Resolves: rhbz#1374417 - "sudo -l command" indicated that the command
     was runnable even if denied by sudoers when using LDAP or SSSD backend.
   - Resolves: rhbz#1387303 - add ignore_iolog_errors option
   - Resolves: rhbz#1389360 - wrong log file group ownership
@@ -538,7 +553,7 @@ rm -rf %{buildroot}
 * Thu May 17 2012 Daniel Kopecek <dkopecek@redhat.com> - 1.8.5-1
 - update to 1.8.5
 - fixed CVE-2012-2337
-- temporarily disabled SSSD support 
+- temporarily disabled SSSD support
 
 * Wed Feb 29 2012 Daniel Kopecek <dkopecek@redhat.com> - 1.8.3p1-6
 - fixed problems with undefined symbols (rhbz#798517)
@@ -557,7 +572,7 @@ rm -rf %{buildroot}
 
 * Thu Nov 10 2011 Daniel Kopecek <dkopecek@redhat.com> - 1.8.3p1-1
 - update to 1.8.3p1
-- disable output word wrapping if the output is piped 
+- disable output word wrapping if the output is piped
 
 * Wed Sep  7 2011 Peter Robinson <pbrobinson@fedoraproject.org> - 1.8.1p2-2
 - Remove execute bit from sample script in docs so we don't pull in perl
@@ -692,7 +707,7 @@ rm -rf %{buildroot}
 - sparc64 needs to be in the -fPIE list with s390
 
 * Mon Jan 07 2008 Peter Vrabec <pvrabec@redhat.com> 1.6.9p4-5
-- fix complains about audit_log_user_command(): Connection 
+- fix complains about audit_log_user_command(): Connection
   refused (#401201)
 
 * Wed Dec 05 2007 Release Engineering <rel-eng at fedoraproject dot org> - 1.6.9p4-4
@@ -794,7 +809,7 @@ rm -rf %{buildroot}
 - rebuild
 
 * Mon Oct  4 2004 Thomas Woerner <twoerner@redhat.com> 1.6.7p5-30.1
-- added missing BuildRequires for libselinux-devel (#132883) 
+- added missing BuildRequires for libselinux-devel (#132883)
 
 * Wed Sep 29 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-30
 - Fix missing param error in sesh
@@ -821,7 +836,7 @@ rm -rf %{buildroot}
   exec of child with SELinux patch
 
 * Thu Mar 18 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-23
-- change to default to sysadm_r 
+- change to default to sysadm_r
 - Fix tty handling
 
 * Thu Mar 18 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-22
@@ -829,7 +844,7 @@ rm -rf %{buildroot}
 - replace /bin/bash -c with /bin/sesh
 
 * Tue Mar 16 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-21
-- Hard code to use "/bin/bash -c" for selinux 
+- Hard code to use "/bin/bash -c" for selinux
 
 * Tue Mar 16 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-20
 - Eliminate closing and reopening of terminals, to match su.
@@ -854,7 +869,7 @@ rm -rf %{buildroot}
 - Fix is_selinux_enabled call
 
 * Tue Jan 13 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-13
-- Clean up patch on failure 
+- Clean up patch on failure
 
 * Tue Jan 6 2004 Dan Walsh <dwalsh@redhat.com> 1.6.7p5-12
 - Remove sudo.te for now.
@@ -977,7 +992,7 @@ rm -rf %{buildroot}
 - fixed so it doesn't find /usr/bin/vi first, but instead /bin/vi (always installed)
 
 * Thu Oct 08 1998 Michael Maher <mike@redhat.com>
-- built package for 5.2 
+- built package for 5.2
 
 * Mon May 18 1998 Michael Maher <mike@redhat.com>
 - updated SPEC file
@@ -989,10 +1004,9 @@ rm -rf %{buildroot}
 - built for glibc, no problems
 
 * Fri Apr 25 1997 Michael Fulbright <msf@redhat.com>
-- Fixed for 4.2 PowerTools 
+- Fixed for 4.2 PowerTools
 - Still need to be pamified
 - Still need to move stmp file to /var/log
 
 * Mon Feb 17 1997 Michael Fulbright <msf@redhat.com>
 - First version for PowerCD.
-
