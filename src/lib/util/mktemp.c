@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2001, 2003, 2004, 2008-2011, 2013, 2015
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2001, 2003, 2004, 2008-2011, 2013, 2015, 2017, 2018
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -38,11 +38,10 @@
 #endif /* HAVE_STRINGS_H */
 #include <ctype.h>
 #include <unistd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
+#include <time.h>
 
 #include "sudo_compat.h"
+#include "pathnames.h"
 
 #define MKTEMP_FILE	1
 #define MKTEMP_DIR	2
@@ -80,10 +79,14 @@ seed_random(void)
 	SEED_T seed;
 	int fd;
 
+# ifdef HAVE_GETENTROPY
+	/* Not really an fd, just has to be -1 on error. */
+	fd = getentropy(&seed, sizeof(seed));
+# else
 	/*
 	 * Seed from /dev/urandom if possible.
 	 */
-	fd = open("/dev/urandom", O_RDONLY);
+	fd = open(_PATH_DEV "urandom", O_RDONLY);
 	if (fd != -1) {
 	    ssize_t nread;
 
@@ -94,7 +97,7 @@ seed_random(void)
 	    if (nread != (ssize_t)sizeof(seed))
 		fd = -1;
 	}
-
+# endif /* HAVE_GETENTROPY */
 	/*
 	 * If no /dev/urandom, seed from time of day and process id
 	 * multiplied by small primes.

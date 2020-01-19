@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2016 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2011-2018 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -28,9 +28,7 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
+#include <time.h>
 #ifdef HAVE_UTMPX_H
 # include <utmpx.h>
 #else
@@ -219,8 +217,8 @@ utmp_logout(const char *line, int status)
 	ut->ut_type = DEAD_PROCESS;
 # endif
 # if defined(HAVE_STRUCT_UTMPX_UT_EXIT) || defined(HAVE_STRUCT_UTMP_UT_EXIT)
-	ut->ut_exit.__e_exit = WEXITSTATUS(status);
-	ut->ut_exit.__e_termination = WIFEXITED(status) ? WEXITSTATUS(status) : 0;
+	ut->ut_exit.__e_termination = WIFSIGNALED(status) ? WTERMSIG(status) : 0;
+	ut->ut_exit.__e_exit = WIFEXITED(status) ? WEXITSTATUS(status) : 0;
 # endif
 	utmp_settime(ut);
 	if (pututxline(ut) != NULL)

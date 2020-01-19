@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1993-1996, 1998-2005, 2007-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -130,6 +130,7 @@ struct user_details {
 #define CD_SUDOEDIT_FOLLOW	0x10000
 #define CD_SUDOEDIT_CHECKDIR	0x20000
 #define CD_SET_GROUPS		0x40000
+#define CD_LOGIN_SHELL		0x80000
 
 struct preserved_fd {
     TAILQ_ENTRY(preserved_fd) entries;
@@ -195,7 +196,6 @@ char *tgetpass(const char *prompt, int timeout, int flags,
     struct sudo_conv_callback *callback);
 
 /* exec.c */
-int pipe_nonblock(int fds[2]);
 int sudo_execute(struct command_details *details, struct command_status *cstat);
 
 /* parse_args.c */
@@ -207,11 +207,12 @@ extern int tgetpass_flags;
 bool get_pty(int *master, int *slave, char *name, size_t namesz, uid_t uid);
 
 /* sudo.c */
-bool exec_setup(struct command_details *details, const char *ptyname, int ptyfd);
 int policy_init_session(struct command_details *details);
 int run_command(struct command_details *details);
 int os_init_common(int argc, char *argv[], char *envp[]);
 bool gc_add(enum sudo_gc_types type, void *v);
+void disable_coredump(bool restore);
+bool set_user_groups(struct command_details *details);
 extern const char *list_user;
 extern struct user_details user_details;
 extern int sudo_debug_instance;
@@ -257,11 +258,11 @@ char *get_process_ttyname(char *name, size_t namelen);
 
 /* signal.c */
 struct sigaction;
-extern int signal_pipe[2];
 int sudo_sigaction(int signo, struct sigaction *sa, struct sigaction *osa);
 void init_signals(void);
 void restore_signals(void);
 void save_signals(void);
+bool signal_pending(int signo);
 
 /* preload.c */
 void preload_static_symbols(void);
@@ -270,5 +271,8 @@ void preload_static_symbols(void);
 int add_preserved_fd(struct preserved_fd_list *pfds, int fd);
 void closefrom_except(int startfd, struct preserved_fd_list *pfds);
 void parse_preserved_fds(struct preserved_fd_list *pfds, const char *fdstr);
+
+/* setpgrp_nobg.c */
+int tcsetpgrp_nobg(int fd, pid_t pgrp_id);
 
 #endif /* SUDO_SUDO_H */

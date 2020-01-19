@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 1993-1996, 1998-2005, 2007-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 1993-1996, 1998-2005, 2007-2017
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -103,11 +103,19 @@ struct sudo_user {
     int   cols;
     int   flags;
     int   max_groups;
+    int   timeout;
     mode_t umask;
     uid_t uid;
     uid_t gid;
     pid_t sid;
 };
+
+/*
+ * sudo_get_gidlist() type values
+ */
+#define ENTRY_TYPE_ANY		0x00
+#define ENTRY_TYPE_QUERIED	0x01
+#define ENTRY_TYPE_FRONTEND	0x02
 
 /*
  * sudo_user flag values
@@ -128,8 +136,7 @@ struct sudo_user {
 #define FLAG_NO_CHECK		0x080
 #define FLAG_NON_INTERACTIVE	0x100
 #define FLAG_BAD_PASSWORD	0x200
-#define FLAG_AUTH_ERROR		0x400
-#define FLAG_NOPASSWD		0x800
+#define FLAG_NOPASSWD		0x400
 
 /*
  * find_path()/set_cmnd() return values
@@ -169,13 +176,14 @@ struct sudo_user {
 /*
  * Used with set_perms()
  */
-#define PERM_INITIAL             0x00
-#define PERM_ROOT                0x01
-#define PERM_USER                0x02
-#define PERM_FULL_USER           0x03
-#define PERM_SUDOERS             0x04
-#define PERM_RUNAS               0x05
-#define PERM_TIMESTAMP           0x06
+#define PERM_INITIAL		0x00
+#define PERM_ROOT		0x01
+#define PERM_USER		0x02
+#define PERM_FULL_USER		0x03
+#define PERM_SUDOERS		0x04
+#define PERM_RUNAS		0x05
+#define PERM_TIMESTAMP		0x06
+#define PERM_IOLOG		0x07
 
 /*
  * Shortcuts for sudo_user contents.
@@ -214,6 +222,7 @@ struct sudo_user {
 #define user_closefrom		(sudo_user.closefrom)
 #define	runas_privs		(sudo_user.privs)
 #define	runas_limitprivs	(sudo_user.limitprivs)
+#define user_timeout		(sudo_user.timeout)
 
 #ifdef __TANDEM
 # define ROOT_UID	65535
@@ -255,6 +264,7 @@ int verify_user(struct passwd *pw, char *prompt, int validated, struct sudo_conv
 int sudo_auth_begin_session(struct passwd *pw, char **user_env[]);
 int sudo_auth_end_session(struct passwd *pw);
 int sudo_auth_init(struct passwd *pw);
+int sudo_auth_approval(struct passwd *pw, int validated);
 int sudo_auth_cleanup(struct passwd *pw);
 
 /* set_perms.c */
@@ -294,13 +304,17 @@ int display_privs(struct sudo_nss_list *, struct passwd *);
 int display_cmnd(struct sudo_nss_list *, struct passwd *);
 
 /* pwutil.c */
+typedef struct cache_item * (*sudo_make_pwitem_t)(uid_t uid, const char *user);
+typedef struct cache_item * (*sudo_make_gritem_t)(gid_t gid, const char *group);
+typedef struct cache_item * (*sudo_make_gidlist_item_t)(const struct passwd *pw, char * const *gids, unsigned int type);
+typedef struct cache_item * (*sudo_make_grlist_item_t)(const struct passwd *pw, char * const *groups);
 __dso_public struct group *sudo_getgrgid(gid_t);
 __dso_public struct group *sudo_getgrnam(const char *);
 __dso_public void sudo_gr_addref(struct group *);
 __dso_public void sudo_gr_delref(struct group *);
 bool user_in_group(const struct passwd *, const char *);
 struct group *sudo_fakegrnam(const char *);
-struct gid_list *sudo_get_gidlist(const struct passwd *pw);
+struct gid_list *sudo_get_gidlist(const struct passwd *pw, unsigned int type);
 struct group_list *sudo_get_grlist(const struct passwd *pw);
 struct passwd *sudo_fakepwnam(const char *, gid_t);
 struct passwd *sudo_mkpwent(const char *user, uid_t uid, gid_t gid, const char *home, const char *shell);
@@ -315,8 +329,9 @@ void sudo_grlist_addref(struct group_list *);
 void sudo_grlist_delref(struct group_list *);
 void sudo_pw_addref(struct passwd *);
 void sudo_pw_delref(struct passwd *);
-int  sudo_set_gidlist(struct passwd *pw, char * const *gids);
+int  sudo_set_gidlist(struct passwd *pw, char * const *gids, unsigned int type);
 int  sudo_set_grlist(struct passwd *pw, char * const *groups);
+void sudo_pwutil_set_backend(sudo_make_pwitem_t, sudo_make_gritem_t, sudo_make_gidlist_item_t, sudo_make_grlist_item_t);
 void sudo_setspent(void);
 
 /* timestr.c */
@@ -331,6 +346,8 @@ bool cb_maxseq(const union sudo_defs_val *sd_un);
 bool cb_iolog_user(const union sudo_defs_val *sd_un);
 bool cb_iolog_group(const union sudo_defs_val *sd_un);
 bool cb_iolog_mode(const union sudo_defs_val *sd_un);
+extern uid_t iolog_uid;
+extern gid_t iolog_gid;
 
 /* iolog_path.c */
 char *expand_iolog_path(const char *prefix, const char *dir, const char *file,
@@ -343,7 +360,7 @@ bool env_swap_old(void);
 bool env_init(char * const envp[]);
 bool init_envtables(void);
 bool insert_env_vars(char * const envp[]);
-bool read_env_file(const char *, int);
+bool read_env_file(const char *path, bool overwrite, bool restricted);
 bool rebuild_env(void);
 bool validate_env_vars(char * const envp[]);
 int sudo_setenv(const char *var, const char *val, int overwrite);
@@ -353,6 +370,9 @@ int sudoers_hook_getenv(const char *name, char **value, void *closure);
 int sudoers_hook_putenv(char *string, void *closure);
 int sudoers_hook_setenv(const char *name, const char *value, int overwrite, void *closure);
 int sudoers_hook_unsetenv(const char *name, void *closure);
+
+/* env_pattern.c */
+bool matches_env_pattern(const char *pattern, const char *var, bool *full_match);
 
 /* sudoers.c */
 FILE *open_sudoers(const char *, bool, bool *);
@@ -364,6 +384,7 @@ extern struct passwd *list_pw;
 extern int long_list;
 extern int sudo_mode;
 extern uid_t timestamp_uid;
+extern gid_t timestamp_gid;
 extern sudo_conv_t sudo_conv;
 extern sudo_printf_t sudo_printf;
 
@@ -387,11 +408,11 @@ bool cb_group_plugin(const union sudo_defs_val *sd_un);
 extern const char *path_plugin_dir;
 
 /* editor.c */
-char *resolve_editor(const char *ed, size_t edlen, int nfiles, char **files,
-    int *argc_out, char ***argv_out, char * const *whitelist);
+char *find_editor(int nfiles, char **files, int *argc_out, char ***argv_out,
+     char * const *whitelist, const char **env_editor, bool env_error);
 
 /* mkdir_parents.c */
-bool sudo_mkdir_parents(char *path, uid_t uid, gid_t *gidp, mode_t mode, bool quiet);
+bool sudo_mkdir_parents(char *path, uid_t uid, gid_t gid, mode_t mode, bool quiet);
 
 /* gc.c */
 enum sudoers_gc_types {

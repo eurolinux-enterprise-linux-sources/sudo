@@ -1,10 +1,10 @@
 dnl
 dnl Use the top-level autogen.sh script to generate configure and config.h.in
 dnl
-dnl Copyright (c) 1994-1996,1998-2017 Todd C. Miller <Todd.Miller@courtesan.com>
+dnl Copyright (c) 1994-1996,1998-2017 Todd C. Miller <Todd.Miller@sudo.ws>
 dnl
 AC_PREREQ([2.59])
-AC_INIT([sudo], [1.8.19p2], [https://bugzilla.sudo.ws/], [sudo])
+AC_INIT([sudo], [1.8.23], [https://bugzilla.sudo.ws/], [sudo])
 AC_CONFIG_HEADER([config.h pathnames.h])
 AC_CONFIG_SRCDIR([src/sudo.c])
 dnl
@@ -96,6 +96,8 @@ AC_SUBST([RC_LINK])
 AC_SUBST([COMPAT_EXP])
 AC_SUBST([TMPFILES_D])
 AC_SUBST([exampledir])
+AC_SUBST([FILEDIGEST])
+AC_SUBST([devsearch])
 dnl
 dnl Variables that get substituted in docs (not overridden by environment)
 dnl
@@ -125,7 +127,7 @@ AC_SUBST([runas_default])
 AC_SUBST([env_editor])
 AC_SUBST([env_reset])
 AC_SUBST([passwd_tries])
-AC_SUBST([tty_tickets])
+AC_SUBST([timestamp_type])
 AC_SUBST([insults])
 AC_SUBST([root_sudo])
 AC_SUBST([path_info])
@@ -169,7 +171,7 @@ env_editor=off
 env_reset=on
 editor=vi
 passwd_tries=3
-tty_tickets=on
+timestamp_type=tty
 insults=off
 root_sudo=on
 path_info=on
@@ -183,6 +185,8 @@ secure_path="not set"
 pam_session=on
 pam_login_service=sudo
 PLUGINDIR=/usr/local/libexec/sudo
+FILEDIGEST=filedigest.lo
+devsearch="/dev/pts:/dev/vt:/dev/term:/dev/zcons:/dev/pty:/dev"
 #
 # End initial values for man page substitution
 #
@@ -284,6 +288,16 @@ AC_ARG_WITH(alertmail, [AS_HELP_STRING([--with-alertmail], [deprecated])],
 		;;
 esac])
 
+AC_ARG_WITH(pc-insults, [AS_HELP_STRING([--with-pc-insults], [deprecated])],
+[case $with_pc_insults in
+    yes)	enable_offensive_insults=no
+		AC_MSG_NOTICE([--with-pc-insults option deprecated, it is now the default])
+		;;
+    no)		enable_offensive_insults=yes
+		AC_MSG_NOTICE([--without-pc-insults option deprecated, use --enable-offensive-insults])
+		;;
+esac])
+
 dnl
 dnl Options for --with
 dnl
@@ -365,6 +379,10 @@ dnl
 AC_ARG_WITH(sssd, [AS_HELP_STRING([--with-sssd], [enable SSSD support])],
 [case $with_sssd in
     yes)	SUDOERS_OBJS="${SUDOERS_OBJS} sssd.lo"
+		case "$SUDOERS_OBJS" in
+		    *ldap_util.lo*) ;;
+		    *) SUDOERS_OBJS="${SUDOERS_OBJS} ldap_util.lo";;
+		esac
 		AC_DEFINE(HAVE_SSSD)
 		;;
     no)		;;
@@ -827,7 +845,7 @@ AC_ARG_WITH(timedir, [AS_HELP_STRING([--with-timedir=DIR], [deprecated])],
 		;;
 esac])
 
-AC_ARG_WITH(rundir, [AS_HELP_STRING([--with-rundir=DIR], [path to the sudo time stamp parent dir])],
+AC_ARG_WITH(rundir, [AS_HELP_STRING([--with-rundir=DIR], [directory for sudo-specific files that do not survive a system reboot, e.g. `/var/run/sudo'])],
 [case $with_rundir in
     yes)	AC_MSG_ERROR(["must give --with-rundir an argument."])
 		;;
@@ -835,7 +853,7 @@ AC_ARG_WITH(rundir, [AS_HELP_STRING([--with-rundir=DIR], [path to the sudo time 
 		;;
 esac])
 
-AC_ARG_WITH(vardir, [AS_HELP_STRING([--with-vardir=DIR], [path to the sudo var dir])],
+AC_ARG_WITH(vardir, [AS_HELP_STRING([--with-vardir=DIR], [directory for sudo-specific files that survive a system reboot, e.g. `/var/db/sudo' or `/var/lib/sudo'])],
 [case $with_vardir in
     yes)	AC_MSG_ERROR(["must give --with-vardir an argument."])
 		;;
@@ -1032,22 +1050,15 @@ esac])
 AC_DEFINE_UNQUOTED(PASSWORD_TIMEOUT, $password_timeout, [The passwd prompt timeout (in minutes).])
 AC_MSG_RESULT($password_timeout)
 
-AC_MSG_CHECKING(whether to use per-tty ticket files)
 AC_ARG_WITH(tty-tickets, [AS_HELP_STRING([--with-tty-tickets], [use a different ticket file for each tty])],
 [case $with_tty_tickets in
-    yes)	tty_tickets=on
+    yes)	timestamp_type=tty
 		;;
-    no)		tty_tickets=off
+    no)		timestamp_type=global
 		;;
     *)		AC_MSG_ERROR(["--with-tty-tickets does not take an argument."])
 		;;
 esac])
-if test "$tty_tickets" = "off"; then
-    AC_DEFINE(NO_TTY_TICKETS)
-    AC_MSG_RESULT(no)
-else
-    AC_MSG_RESULT(yes)
-fi
 
 AC_MSG_CHECKING(whether to include insults)
 AC_ARG_WITH(insults, [AS_HELP_STRING([--with-insults], [insult the user for entering an incorrect password])],
@@ -1078,6 +1089,7 @@ AC_ARG_WITH(all-insults, [AS_HELP_STRING([--with-all-insults], [include all the 
 		with_csops_insults=yes
 		with_hal_insults=yes
 		with_goons_insults=yes
+		with_python_insults=yes
 		;;
     no)		;;
     *)		AC_MSG_ERROR(["--with-all-insults does not take an argument."])
@@ -1120,6 +1132,15 @@ AC_ARG_WITH(goons-insults, [AS_HELP_STRING([--with-goons-insults], [include the 
 		;;
 esac])
 
+AC_ARG_WITH(python-insults, [AS_HELP_STRING([--with-python-insults], [include the insults from "Monty Python's Flying Circus"])],
+[case $with_python_insults in
+    yes)	AC_DEFINE(PYTHON_INSULTS)
+        ;;
+    no)		;;
+    *)		AC_MSG_ERROR(["--with-python-insults does not take an argument."])
+        ;;
+esac])
+
 AC_ARG_WITH(nsswitch, [AS_HELP_STRING([--with-nsswitch[[=PATH]]], [path to nsswitch.conf])],
 [case $with_nsswitch in
     no)		;;
@@ -1145,19 +1166,11 @@ AC_ARG_WITH(ldap-secret-file, [AS_HELP_STRING([--with-ldap-secret-file], [path t
 test -n "$with_ldap_secret_file" && ldap_secret="$with_ldap_secret_file"
 SUDO_DEFINE_UNQUOTED(_PATH_LDAP_SECRET, "$ldap_secret", [Path to the ldap.secret file])
 
-AC_ARG_WITH(pc-insults, [AS_HELP_STRING([--with-pc-insults], [replace politically incorrect insults with less offensive ones])],
-[case $with_pc_insults in
-    yes)	AC_DEFINE(PC_INSULTS)
-		;;
-    no)		;;
-    *)		AC_MSG_ERROR(["--with-pc-insults does not take an argument."])
-		;;
-esac])
-
 dnl include all insult sets on one line
 if test "$insults" = "on"; then
     AC_MSG_CHECKING(which insult sets to include)
     i=""
+    test "$with_python_insults" = "yes" && i="python ${i}"
     test "$with_goons_insults" = "yes" && i="goons ${i}"
     test "$with_hal_insults" = "yes" && i="hal ${i}"
     test "$with_csops_insults" = "yes" && i="csops ${i}"
@@ -1449,6 +1462,34 @@ AC_ARG_ENABLE(werror,
   esac
 ])
 
+AC_ARG_ENABLE(openssl,
+[AS_HELP_STRING([--enable-openssl], [Use OpenSSL's message digest functions instead of sudo's])],
+[ case $enableval in
+    no)		;;
+    *)		LIBMD="-lcrypto"
+		FILEDIGEST=filedigest_openssl.lo
+		if test "$enableval" != "yes"; then
+		    AX_APPEND_FLAG([-I${enableval}/include], [CPPFLAGS])
+		    SUDO_APPEND_LIBPATH(SUDOERS_LDFLAGS, [${enableval}/lib])
+		fi
+		;;
+ esac
+])
+
+AC_ARG_ENABLE(gcrypt,
+[AS_HELP_STRING([--enable-gcrypt], [Use GNU crypt's message digest functions instead of sudo's])],
+[ case $enableval in
+    no)		;;
+    *)		LIBMD="-lgcrypt"
+		FILEDIGEST=filedigest_gcrypt.lo
+		if test "$enableval" != "yes"; then
+		    AX_APPEND_FLAG([-I${enableval}/include], [CPPFLAGS])
+		    SUDO_APPEND_LIBPATH(SUDOERS_LDFLAGS, [${enableval}/lib])
+		fi
+		;;
+ esac
+])
+
 AC_ARG_ENABLE(hardening,
 [AS_HELP_STRING([--disable-hardening], [Do not use compiler/linker exploit mitigation options])],
 [], [enable_hardening=yes])
@@ -1501,6 +1542,19 @@ esac], [
     test -f /usr/lib/tmpfiles.d/systemd.conf && TMPFILES_D=/usr/lib/tmpfiles.d
 ])
 
+AC_ARG_ENABLE(devsearch,
+[AS_HELP_STRING([--enable-devsearch=PATH], [The colon-delimited path to search for device nodes when determing the tty name.])],
+[case $enableval in
+    yes)	# use default value
+		;;
+    no)		AC_MSG_WARN([Ignoring attempt to disable the device search path])
+		;;
+    *)		devsearch="$enableval"
+		;;
+esac])
+ds="`echo \"$devsearch\"|sed 's@/dev/*\([[^:]]*:*\)@_PATH_DEV \"\1\" @g'`"
+SUDO_DEFINE_UNQUOTED(_PATH_SUDO_DEVSEARCH, $ds)
+
 AC_ARG_WITH(selinux, [AS_HELP_STRING([--with-selinux], [enable SELinux support])],
 [case $with_selinux in
     yes)	SELINUX_USAGE="[[-r role]] [[-t type]] "
@@ -1516,6 +1570,34 @@ AC_ARG_WITH(selinux, [AS_HELP_STRING([--with-selinux], [enable SELinux support])
     *)		AC_MSG_ERROR(["--with-selinux does not take an argument."])
 		;;
 esac], [with_selinux=no])
+
+AC_ARG_ENABLE(sasl,
+[AS_HELP_STRING([--enable-sasl], [Enable/disable LDAP SASL support])],
+[ case "$enableval" in
+    yes|no) ;;
+    *)	    AC_MSG_WARN([Ignoring unknown argument to --enable-sasl: $enableval])
+	    ;;
+  esac
+])
+
+AC_ARG_ENABLE(timestamp-type,
+[AS_HELP_STRING([--timestamp-type=TYPE], [Set the default time stamp record type to global, ppid or tty.])],
+[ case "$enableval" in
+    global|ppid|tty)
+	    timestamp_type=$enableval
+	    ;;
+    *)	    AC_MSG_WARN([Ignoring unknown argument to --enable-timestamp-type: $enableval])
+	    ;;
+  esac
+])
+AC_DEFINE_UNQUOTED(TIMESTAMP_TYPE, $timestamp_type)
+
+AC_ARG_ENABLE(offensive_insults,
+[AS_HELP_STRING([--enable-offensive-insults], [Enable potentially offensive sudo insults.])],
+[], [enable_offensive_insults=no])
+if test "$enable_offensive_insults" = "yes"; then
+    AC_DEFINE(OFFENSIVE_INSULTS)
+fi
 
 dnl
 dnl gss_krb5_ccache_name() may not work on Heimdal so we don't use it by default
@@ -2249,7 +2331,6 @@ dnl
 dnl Header file checks
 dnl
 AC_HEADER_DIRENT
-AC_HEADER_TIME
 AC_HEADER_STDBOOL
 AC_HEADER_MAJOR
 AC_CHECK_HEADERS_ONCE([netgroup.h paths.h spawn.h utmpx.h wordexp.h sys/sockio.h sys/bsdtypes.h sys/select.h sys/stropts.h sys/sysmacros.h])
@@ -2325,8 +2406,6 @@ AC_CHECK_TYPE([clockid_t], [], [AC_DEFINE(clockid_t, int)], [#include <sys/types
 #include <time.h>])
 AC_CHECK_TYPE([sig_atomic_t], [], [AC_DEFINE(sig_atomic_t, int)], [#include <sys/types.h>
 #include <signal.h>])
-AC_CHECK_TYPES([sigaction_t], [], [], [#include <sys/types.h>
-#include <signal.h>])
 AC_CHECK_TYPES([struct in6_addr], [], [], [#include <sys/types.h>
 #include <netinet/in.h>])
 AC_TYPE_LONG_LONG_INT
@@ -2348,6 +2427,7 @@ SUDO_SOCK_SA_LEN
 SUDO_SOCK_SIN_LEN
 AC_CHECK_SIZEOF([id_t])
 AC_CHECK_SIZEOF([long long])
+AC_CHECK_SIZEOF([time_t])
 dnl
 dnl Check for utmp/utmpx struct members.
 dnl We need to have already defined _GNU_SOURCE on glibc which only has
@@ -2393,7 +2473,7 @@ dnl
 dnl Function checks
 dnl
 AC_FUNC_GETGROUPS
-AC_CHECK_FUNCS_ONCE([fexecve killpg nl_langinfo strftime pread pwrite openat faccessat wordexp])
+AC_CHECK_FUNCS_ONCE([fexecve killpg nl_langinfo pread pwrite openat faccessat wordexp])
 case "$host_os" in
     hpux*)
 	if test X"$ac_cv_func_pread" = X"yes"; then
@@ -2462,11 +2542,11 @@ if test "$utmp_style" = "LEGACY"; then
     AC_CHECK_FUNCS([fseeko])
 fi
 
-AC_CHECK_FUNCS([sysctl], [AC_CHECK_MEMBERS([struct kinfo_proc.ki_tdev], [],
-    [
-	AC_CHECK_MEMBERS([struct kinfo_proc2.p_tdev], [], [
-	    AC_CHECK_MEMBERS([struct kinfo_proc.p_tdev], [], [
-		AC_CHECK_MEMBERS([struct kinfo_proc.kp_eproc.e_tdev], [], [], [
+AC_CHECK_FUNCS([sysctl], [AC_CHECK_FUNCS([devname])
+    AC_CHECK_MEMBER([struct kinfo_proc.ki_structsize], [AC_DEFINE(HAVE_KINFO_PROC_FREEBSD)], [
+	AC_CHECK_MEMBER([struct kinfo_proc2.p_paddr], [AC_DEFINE(HAVE_KINFO_PROC2_NETBSD)], [
+	    AC_CHECK_MEMBER([struct kinfo_proc.p_paddr], [AC_DEFINE(HAVE_KINFO_PROC_OPENBSD)], [
+		AC_CHECK_MEMBER([struct kinfo_proc.kp_proc], [AC_DEFINE(HAVE_KINFO_PROC_44BSD)], [], [
 #		    include <sys/param.h>
 #		    include <sys/sysctl.h>
 		])
@@ -2588,6 +2668,10 @@ AC_CHECK_FUNCS(nanosleep, [], [
 	SUDO_APPEND_COMPAT_EXP(sudo_nanosleep)
     ])
 ])
+AC_CHECK_FUNCS([pipe2], [], [
+    AC_LIBOBJ(pipe2)
+    SUDO_APPEND_COMPAT_EXP(sudo_pipe2)
+])
 AC_CHECK_FUNCS([pw_dup], [], [
     AC_LIBOBJ(pw_dup)
     SUDO_APPEND_COMPAT_EXP(sudo_pw_dup)
@@ -2641,6 +2725,9 @@ AC_CHECK_FUNCS([closefrom], [], [AC_LIBOBJ(closefrom)
 AC_CHECK_FUNCS([mkstemps mkdtemp], [], [break])
 if test X"$ac_cv_func_mkstemps$ac_cv_func_mkdtemp" != X"yesyes"; then
     AC_CHECK_FUNCS([arc4random random lrand48], [break])
+    if test X"$ac_cv_func_arc4random" != X"yes"; then
+	AC_CHECK_FUNCS([getentropy])
+    fi
     AC_LIBOBJ(mktemp)
     # If either mkdtemp() or mkstemps() is missing, replace both.
     SUDO_APPEND_COMPAT_EXP(sudo_mkdtemp sudo_mkstemps)
@@ -2665,32 +2752,44 @@ fi
 AC_CHECK_FUNCS([strtonum])
 AC_LIBOBJ(strtonum)
 SUDO_APPEND_COMPAT_EXP(sudo_strtonum)
+AC_CHECK_MEMBERS([struct tm.tm_gmtoff], [], [], [
+AC_INCLUDES_DEFAULT
+#include <errno.h>
+])
 AC_CHECK_MEMBER([struct stat.st_mtim], [AC_DEFINE(HAVE_ST_MTIM)]
     [AC_CHECK_MEMBER([struct stat.st_mtim.st__tim], AC_DEFINE(HAVE_ST__TIM))],
     [AC_CHECK_MEMBER([struct stat.st_mtimespec], AC_DEFINE([HAVE_ST_MTIMESPEC]))])
-FOUND_SHA2=no
-AC_CHECK_HEADER([sha2.h], [
-    FOUND_SHA2=yes
-    AC_CHECK_FUNCS([SHA224Update], [SUDO_FUNC_SHA2_VOID_PTR], [
-	# On some systems, SHA224Update is in libmd
-	AC_CHECK_LIB(md, SHA224Update, [
-	    AC_DEFINE(HAVE_SHA224UPDATE)
-	    SUDO_FUNC_SHA2_VOID_PTR
-	    LIBMD="-lmd"
-	], [
-	    # Does not have SHA224Update
-	    FOUND_SHA2=no
+# Look for sha2 functions if not using openssl
+if test "$FILEDIGEST" = "filedigest.lo"; then
+    FOUND_SHA2=no
+    AC_CHECK_HEADER([sha2.h], [
+	FOUND_SHA2=yes
+	AC_CHECK_FUNCS([SHA224Update], [SUDO_FUNC_SHA2_VOID_PTR], [
+	    # On some systems, SHA224Update is in libmd
+	    AC_CHECK_LIB(md, SHA224Update, [
+		AC_DEFINE(HAVE_SHA224UPDATE)
+		SUDO_FUNC_SHA2_VOID_PTR
+		LIBMD="-lmd"
+	    ], [
+		# Does not have SHA224Update
+		FOUND_SHA2=no
+	    ])
 	])
     ])
-])
-if test X"$FOUND_SHA2" = X"no"; then
-    AC_LIBOBJ(sha2)
-    SUDO_APPEND_COMPAT_EXP(sudo_SHA224Final sudo_SHA224Init sudo_SHA224Pad sudo_SHA224Transform sudo_SHA224Update sudo_SHA256Final sudo_SHA256Init sudo_SHA256Pad sudo_SHA256Transform sudo_SHA256Update sudo_SHA384Final sudo_SHA384Init sudo_SHA384Pad sudo_SHA384Transform sudo_SHA384Update sudo_SHA512Final sudo_SHA512Init sudo_SHA512Pad sudo_SHA512Transform sudo_SHA512Update)
+    if test X"$FOUND_SHA2" = X"no"; then
+	AC_LIBOBJ(sha2)
+	SUDO_APPEND_COMPAT_EXP(sudo_SHA224Final sudo_SHA224Init sudo_SHA224Pad sudo_SHA224Transform sudo_SHA224Update sudo_SHA256Final sudo_SHA256Init sudo_SHA256Pad sudo_SHA256Transform sudo_SHA256Update sudo_SHA384Final sudo_SHA384Init sudo_SHA384Pad sudo_SHA384Transform sudo_SHA384Update sudo_SHA512Final sudo_SHA512Init sudo_SHA512Pad sudo_SHA512Transform sudo_SHA512Update)
+    fi
 fi
 AC_CHECK_FUNCS([vsyslog], [], [
     AC_LIBOBJ(vsyslog)
     SUDO_APPEND_COMPAT_EXP(sudo_vsyslog)
+    COMPAT_TEST_PROGS="${COMPAT_TEST_PROGS}${COMPAT_TEST_PROGS+ }vsyslog_test"
 ])
+dnl
+dnl 4.4BSD-based systems can force the password or group file to be held open
+dnl
+AC_CHECK_FUNCS([setpassent setgroupent])
 dnl
 dnl Function checks for sudo_noexec
 dnl
@@ -3185,7 +3284,7 @@ if test ${with_pam-"no"} != "no"; then
     found_pam_lib=no
     AC_CHECK_LIB(pam, pam_start, [found_pam_lib=yes], [], [$lt_cv_dlopen_libs])
     #
-    # Some PAM implementations (MacOS X for example) put the PAM headers
+    # Some PAM implementations (macOS for example) put the PAM headers
     # in /usr/include/pam instead of /usr/include/security...
     #
     found_pam_hdrs=no
@@ -3646,7 +3745,11 @@ if test ${with_ldap-'no'} != "no"; then
 	AX_APPEND_FLAG([-I${with_ldap}/include], [CPPFLAGS])
 	with_ldap=yes
     fi
-    SUDOERS_OBJS="${SUDOERS_OBJS} ldap.lo"
+    SUDOERS_OBJS="${SUDOERS_OBJS} ldap.lo ldap_conf.lo"
+    case "$SUDOERS_OBJS" in
+	*ldap_util.lo*) ;;
+	*) SUDOERS_OBJS="${SUDOERS_OBJS} ldap_util.lo";;
+    esac
     LDAP=""
 
     _LIBS="$LIBS"
@@ -3686,10 +3789,22 @@ if test ${with_ldap-'no'} != "no"; then
     AC_MSG_RESULT([yes])
     AC_DEFINE(HAVE_LBER_H)])
 
-    AC_CHECK_HEADERS([sasl/sasl.h] [sasl.h], [
-	AC_CHECK_FUNCS([ldap_sasl_interactive_bind_s])
-	break
-    ])
+    if test ${enable_sasl-'yes'} = "yes"; then
+	found_sasl_h=no
+	AC_CHECK_HEADERS([sasl/sasl.h] [sasl.h], [
+	    found_sasl_h=yes
+	    AC_CHECK_FUNCS([ldap_sasl_interactive_bind_s])
+	    break
+	])
+	if test X${enable_sasl} = X"yes"; then
+	    if test X"$found_sasl_h" != X"yes"; then
+		AC_MSG_ERROR(["--enable-sasl specified but unable to locate SASL development headers."])
+	    fi
+	    if test X"$ac_cv_func_ldap_sasl_interactive_bind_s" != X"yes"; then :
+		AC_MSG_ERROR(["--enable-sasl specified but SASL support is missing in your LDAP library"])
+	    fi
+	fi
+    fi
     AC_CHECK_HEADERS([ldap_ssl.h] [mps/ldap_ssl.h], [break], [], [#include <ldap.h>])
     AC_CHECK_FUNCS([ldap_initialize ldap_start_tls_s ldapssl_init ldapssl_set_strength ldap_unbind_ext_s ldap_str2dn ldap_create ldap_sasl_bind_s ldap_ssl_init ldap_ssl_client_init ldap_start_tls_s_np])
     AC_CHECK_FUNCS([ldap_search_ext_s ldap_search_st], [break])
@@ -4178,7 +4293,7 @@ if test X"$with_noexec" != X"no" -o X"$with_selinux" != X"no" -o "$enabled_share
 
 	# Can't use asan with LD_PRELOAD
 	if test "$enable_asan" != "yes"; then
-	    CHECK_NOEXEC=check_sudo_noexec
+	    CHECK_NOEXEC=check_noexec
 	fi
 
 	noexec_file="$with_noexec"
@@ -4282,7 +4397,7 @@ dnl
 dnl Warn user if they may need to clear rundir manually.
 dnl
 case "$rundir" in
-    /var/run*)
+    /run/*|/var/run/*)
 	clear_rundir=0
 	;;
     *)
@@ -4304,6 +4419,7 @@ AH_TEMPLATE(ENV_DEBUG, [Define to 1 to enable environment function debugging.])
 AH_TEMPLATE(ENV_EDITOR, [Define to 1 if you want visudo to honor the EDITOR and VISUAL env variables.])
 AH_TEMPLATE(FQDN, [Define to 1 if you want to require fully qualified hosts in sudoers.])
 AH_TEMPLATE(ENV_RESET, [Define to 1 to enable environment resetting by default.])
+AH_TEMPLATE(PYTHON_INSULTS, [Define to 1 if you want insults from "Monty Python's Flying Circus".])
 AH_TEMPLATE(GOONS_INSULTS, [Define to 1 if you want insults from the "Goon Show".])
 AH_TEMPLATE(HAL_INSULTS, [Define to 1 if you want 2001-like insults.])
 AH_TEMPLATE(HAVE_AFS, [Define to 1 if you use AFS.])
@@ -4363,8 +4479,8 @@ AH_TEMPLATE(NO_LECTURE, [Define to 1 if you don't want users to get the lecture 
 AH_TEMPLATE(NO_PAM_SESSION, [Define to 1 if you don't want to use sudo's PAM session support.])
 AH_TEMPLATE(NO_ROOT_MAILER, [Define to avoid runing the mailer as root.])
 AH_TEMPLATE(NO_ROOT_SUDO, [Define to 1 if root should not be allowed to use sudo.])
-AH_TEMPLATE(NO_TTY_TICKETS, [Define to 1 if you want a single ticket file instead of per-tty files.])
-AH_TEMPLATE(PC_INSULTS, [Define to 1 to replace politically incorrect insults with less offensive ones.])
+AH_TEMPLATE(TIMESTAMP_TYPE, [Define to global, ppid or tty to set the default timestamp record type.])
+AH_TEMPLATE(OFFENSIVE_INSULTS, [Define to 1 to include offensive insults from the classic version of sudo.])
 AH_TEMPLATE(PREFER_PORTABLE_GETCWD, [Define to 1 to enable replacement getcwd if system getcwd is broken.])
 AH_TEMPLATE(SECURE_PATH, [A colon-separated list of directories to override the user's PATH with.])
 AH_TEMPLATE(SEND_MAIL_WHEN_NOT_OK, [Define to 1 to send mail when the user is not allowed to run a command.])
@@ -4401,7 +4517,10 @@ AH_TEMPLATE(HAVE___NSS_XBYY_BUF_ALLOC, [Define to 1 if you have the `__nss_XbyY_
 AH_TEMPLATE(NEED_RESOLV_H, [Define to 1 if resolv.h must be included to get the `inet_ntop' or `inet_pton' function prototypes.])
 AH_TEMPLATE(HAVE_STRNLEN, [Define to 1 if you have the `strnlen' function.])
 AH_TEMPLATE(PAM_SUN_CODEBASE, [Define to 1 if your system uses a Solaris-derived PAM and not Linux-PAM or OpenPAM.])
-
+AH_TEMPLATE(HAVE_KINFO_PROC_44BSD, [Define to 1 if your system has a 4.4BSD-style kinfo_proc struct.])
+AH_TEMPLATE(HAVE_KINFO_PROC_FREEBSD, [Define to 1 if your system has a FreeBSD-style kinfo_proc struct.])
+AH_TEMPLATE(HAVE_KINFO_PROC2_NETBSD, [Define to 1 if your system has a NetBSD-style kinfo_proc2 struct.])
+AH_TEMPLATE(HAVE_KINFO_PROC_OPENBSD, [Define to 1 if your system has an OpenBSD-style kinfo_proc struct.])
 dnl
 dnl Bits to copy verbatim into config.h.in
 dnl

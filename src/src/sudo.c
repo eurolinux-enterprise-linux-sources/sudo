@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2016 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2009-2018 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -24,7 +24,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/resource.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,21 +41,9 @@
 #include <signal.h>
 #include <grp.h>
 #include <pwd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
-#ifdef HAVE_LOGIN_CAP_H
-# include <login_cap.h>
-# ifndef LOGIN_SETENV
-#  define LOGIN_SETENV	0
-# endif
-#endif
-#ifdef HAVE_PROJECT_H
-# include <project.h>
-# include <sys/task.h>
-#endif
+#include <time.h>
 #ifdef HAVE_SELINUX
-# include <selinux/selinux.h>
+# include <selinux/selinux.h>		/* for is_selinux_enabled() */
 #endif
 #ifdef HAVE_SETAUTHDB
 # include <usersec.h>
@@ -70,6 +57,9 @@
 # endif /* __hpux */
 # include <prot.h>
 #endif /* HAVE_GETPRPWNAM && HAVE_SET_AUTH_PARAMETERS */
+#ifdef __linux__
+# include <sys/prctl.h>
+#endif
 
 #include <sudo_usage.h>
 #include "sudo.h"
@@ -104,7 +94,6 @@ static struct sudo_gc_list sudo_gc_list = SLIST_HEAD_INITIALIZER(sudo_gc_list);
  * Local functions
  */
 static void fix_fds(void);
-static void disable_coredumps(void);
 static void sudo_check_suid(const char *path);
 static char **get_user_info(struct user_details *);
 static void command_info_to_details(char * const info[],
@@ -135,13 +124,7 @@ static void iolog_close(struct plugin_container *plugin, int exit_status,
     int error);
 static int iolog_show_version(struct plugin_container *plugin, int verbose);
 static void iolog_unlink(struct plugin_container *plugin);
-
-#ifdef RLIMIT_CORE
-static struct rlimit corelimit;
-#endif
-#ifdef __linux__
-static struct rlimit nproclimit;
-#endif
+static void free_plugin_container(struct plugin_container *plugin, bool ioplugin);
 
 __dso_public int main(int argc, char *argv[], char *envp[]);
 
@@ -201,7 +184,8 @@ main(int argc, char *argv[], char *envp[])
 	exit(EXIT_FAILURE); /* get_user_info printed error message */
 
     /* Disable core dumps if not enabled in sudo.conf. */
-    disable_coredumps();
+    if (sudo_conf_disable_coredump())
+	disable_coredump(false);
 
     /* Parse command line arguments. */
     sudo_mode = parse_args(argc, argv, &nargc, &nargv, &settings, &env_add);
@@ -295,16 +279,13 @@ main(int argc, char *argv[], char *envp[])
 	    command_info_to_details(command_info, &command_details);
 	    command_details.argv = argv_out;
 	    command_details.envp = user_env_out;
+	    if (ISSET(sudo_mode, MODE_LOGIN_SHELL))
+		SET(command_details.flags, CD_LOGIN_SHELL);
 	    if (ISSET(sudo_mode, MODE_BACKGROUND))
 		SET(command_details.flags, CD_BACKGROUND);
 	    /* Become full root (not just setuid) so user cannot kill us. */
 	    if (setuid(ROOT_UID) == -1)
 		sudo_warn("setuid(%d)", ROOT_UID);
-	    /* Restore coredumpsize resource limit before running. */
-#ifdef RLIMIT_CORE
-	    if (sudo_conf_disable_coredump())
-		(void) setrlimit(RLIMIT_CORE, &corelimit);
-#endif /* RLIMIT_CORE */
 	    if (ISSET(command_details.flags, CD_SUDOEDIT)) {
 		status = sudo_edit(&command_details);
 	    } else {
@@ -316,13 +297,21 @@ main(int argc, char *argv[], char *envp[])
 	    sudo_fatalx(U_("unexpected sudo mode 0x%x"), sudo_mode);
     }
 
+    /*
+     * If the command was terminated by a signal, sudo needs to terminated
+     * the same way.  Otherwise, the shell may ignore a keyboard-generated
+     * signal.  However, we want to avoid having sudo dump core itself.
+     */
     if (WIFSIGNALED(status)) {
-	sigaction_t sa;
+	struct sigaction sa;
+
+	if (WCOREDUMP(status))
+	    disable_coredump(false);
 
 	memset(&sa, 0, sizeof(sa));
 	sigemptyset(&sa.sa_mask);
 	sa.sa_handler = SIG_DFL;
-	sigaction(SIGINT, &sa, NULL);
+	sigaction(WTERMSIG(status), &sa, NULL);
 	sudo_debug_exit_int(__func__, __FILE__, __LINE__, sudo_debug_subsys,
 	    WTERMSIG(status) | 128);                
 	kill(getpid(), WTERMSIG(status));
@@ -384,7 +373,7 @@ fix_fds(void)
 static int
 fill_group_list(struct user_details *ud, int system_maxgroups)
 {
-    int tries, ret = -1;
+    int ret = -1;
     debug_decl(fill_group_list, SUDO_DEBUG_UTIL)
 
     /*
@@ -408,6 +397,8 @@ fill_group_list(struct user_details *ud, int system_maxgroups)
 	if (ud->ngroups != -1)
 	    ret = 0;
 #else
+	int tries;
+
 	/*
 	 * It is possible to belong to more groups in the group database
 	 * than NGROUPS_MAX.  We start off with NGROUPS_MAX * 4 entries
@@ -428,6 +419,15 @@ fill_group_list(struct user_details *ud, int system_maxgroups)
 #endif /* HAVE_GETGROUPLIST_2 */
     }
 done:
+    if (ret == -1) {
+	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_ERRNO,
+	    "%s: %s: unable to get groups via getgrouplist()",
+	    __func__, ud->username);
+    } else {
+	sudo_debug_printf(SUDO_DEBUG_INFO,
+	    "%s: %s: got %d groups via getgrouplist()",
+	    __func__, ud->username, ud->ngroups);
+    }
     debug_return_int(ret);
 }
 
@@ -453,8 +453,15 @@ get_user_groups(struct user_details *ud)
 		if (ud->groups == NULL)
 		    goto oom;
 		if (getgroups(ud->ngroups, ud->groups) < 0) {
+		    sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_ERRNO,
+			"%s: %s: unable to get %d groups via getgroups()",
+			__func__, ud->username, ud->ngroups);
 		    free(ud->groups);
 		    ud->groups = NULL;
+		} else {
+		    sudo_debug_printf(SUDO_DEBUG_INFO,
+			"%s: %s: got %d groups via getgroups()",
+			__func__, ud->username, ud->ngroups);
 		}
 	    }
 	}
@@ -502,6 +509,19 @@ get_user_info(struct user_details *ud)
     int fd;
     debug_decl(get_user_info, SUDO_DEBUG_UTIL)
 
+    /*
+     * On BSD systems you can set a hint to keep the password and
+     * group databases open instead of having to open and close
+     * them all the time.  Since sudo does a lot of password and
+     * group lookups, keeping the file open can speed things up.
+     */
+#ifdef HAVE_SETPASSENT
+    setpassent(1);
+#endif /* HAVE_SETPASSENT */
+#ifdef HAVE_SETGROUPENT
+    setgroupent(1);
+#endif /* HAVE_SETGROUPENT */
+
     memset(ud, 0, sizeof(*ud));
 
     /* XXX - bound check number of entries */
@@ -525,6 +545,9 @@ get_user_info(struct user_details *ud)
     ud->gid = getgid();
     ud->egid = getegid();
 
+#ifdef HAVE_SETAUTHDB
+    aix_setauthdb(IDtouser(ud->uid), NULL);
+#endif
     pw = getpwuid(ud->uid);
     if (pw == NULL)
 	sudo_fatalx(U_("unknown uid %u: who are you?"), (unsigned int)ud->uid);
@@ -889,70 +912,42 @@ sudo_check_suid(const char *sudo)
 
 /*
  * Disable core dumps to avoid dropping a core with user password in it.
- * We will reset this limit before executing the command.
+ * Called with restore set to true before executing the command.
  * Not all operating systems disable core dumps for setuid processes.
  */
-static void
-disable_coredumps(void)
+void
+disable_coredump(bool restore)
 {
-#if defined(RLIMIT_CORE)
     struct rlimit rl;
-    debug_decl(disable_coredumps, SUDO_DEBUG_UTIL)
-
-    /*
-     * Turn off core dumps?
-     */
-    if (sudo_conf_disable_coredump()) {
-	(void) getrlimit(RLIMIT_CORE, &corelimit);
-	memcpy(&rl, &corelimit, sizeof(struct rlimit));
-	rl.rlim_cur = 0;
-	(void) setrlimit(RLIMIT_CORE, &rl);
-    }
-    debug_return;
-#endif /* RLIMIT_CORE */
-}
-
-/*
- * Unlimit the number of processes since Linux's setuid() will
- * apply resource limits when changing uid and return EAGAIN if
- * nproc would be exceeded by the uid switch.
- */
-static void
-unlimit_nproc(void)
-{
+    static struct rlimit corelimit;
 #ifdef __linux__
-    struct rlimit rl;
-    debug_decl(unlimit_nproc, SUDO_DEBUG_UTIL)
+    static int dumpflag;
+#endif
+    debug_decl(disable_coredump, SUDO_DEBUG_UTIL)
 
-    if (getrlimit(RLIMIT_NPROC, &nproclimit) != 0)
-	sudo_warn("getrlimit");
-    rl.rlim_cur = rl.rlim_max = RLIM_INFINITY;
-    if (setrlimit(RLIMIT_NPROC, &rl) != 0) {
-	rl.rlim_cur = rl.rlim_max = nproclimit.rlim_max;
-	if (setrlimit(RLIMIT_NPROC, &rl) != 0)
-	    sudo_warn("setrlimit");
-    }
-    debug_return;
-#endif /* __linux__ */
-}
-
-/*
- * Restore saved value of RLIMIT_NPROC.
- */
-static void
-restore_nproc(void)
-{
+    if (restore) {
+	(void) setrlimit(RLIMIT_CORE, &corelimit);
 #ifdef __linux__
-    debug_decl(restore_nproc, SUDO_DEBUG_UTIL)
+	(void) prctl(PR_SET_DUMPABLE, dumpflag, 0, 0, 0);
+#endif /* __linux__ */
+	debug_return;
+    }
 
-    if (setrlimit(RLIMIT_NPROC, &nproclimit) != 0)
-	sudo_warn("setrlimit");
+    (void) getrlimit(RLIMIT_CORE, &corelimit);
+    rl.rlim_cur = 0;
+    rl.rlim_max = 0;
+    (void) setrlimit(RLIMIT_CORE, &rl);
+#ifdef __linux__
+    /* On Linux, also set PR_SET_DUMPABLE to zero (reset by execve). */
+    if ((dumpflag = prctl(PR_GET_DUMPABLE, 0, 0, 0, 0)) == -1)
+	dumpflag = 0;
+    (void) prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif /* __linux__ */
 
     debug_return;
-#endif /* __linux__ */
 }
 
-static bool
+bool
 set_user_groups(struct command_details *details)
 {
     bool ret = false;
@@ -982,159 +977,6 @@ set_user_groups(struct command_details *details)
 
 done:
     CLR(details->flags, CD_SET_GROUPS);
-    debug_return_bool(ret);
-}
-
-/*
- * Setup the execution environment immediately prior to the call to execve().
- * Group setup is performed by policy_init_session(), called earlier.
- * Returns true on success and false on failure.
- */
-bool
-exec_setup(struct command_details *details, const char *ptyname, int ptyfd)
-{
-    bool ret = false;
-    debug_decl(exec_setup, SUDO_DEBUG_EXEC)
-
-#ifdef HAVE_SELINUX
-    if (ISSET(details->flags, CD_RBAC_ENABLED)) {
-	if (selinux_setup(details->selinux_role, details->selinux_type,
-	    ptyname ? ptyname : user_details.tty, ptyfd) == -1)
-	    goto done;
-    }
-#endif
-
-    if (details->pw != NULL) {
-#ifdef HAVE_PROJECT_H
-	set_project(details->pw);
-#endif
-#ifdef HAVE_PRIV_SET
-	if (details->privs != NULL) {
-	    if (setppriv(PRIV_SET, PRIV_INHERITABLE, details->privs) != 0) {
-		sudo_warn("unable to set privileges");
-		goto done;
-	    }
-	}
-	if (details->limitprivs != NULL) {
-	    if (setppriv(PRIV_SET, PRIV_LIMIT, details->limitprivs) != 0) {
-		sudo_warn("unable to set limit privileges");
-		goto done;
-	    }
-	} else if (details->privs != NULL) {
-	    if (setppriv(PRIV_SET, PRIV_LIMIT, details->privs) != 0) {
-		sudo_warn("unable to set limit privileges");
-		goto done;
-	    }
-	}
-#endif /* HAVE_PRIV_SET */
-
-#ifdef HAVE_GETUSERATTR
-	if (aix_prep_user(details->pw->pw_name, ptyname ? ptyname : user_details.tty) != 0) {
-	    /* error message displayed by aix_prep_user */
-	    goto done;
-	}
-#endif
-#ifdef HAVE_LOGIN_CAP_H
-	if (details->login_class) {
-	    int flags;
-	    login_cap_t *lc;
-
-	    /*
-	     * We only use setusercontext() to set the nice value and rlimits
-	     * unless this is a login shell (sudo -i).
-	     */
-	    lc = login_getclass((char *)details->login_class);
-	    if (!lc) {
-		sudo_warnx(U_("unknown login class %s"), details->login_class);
-		errno = ENOENT;
-		goto done;
-	    }
-	    if (ISSET(sudo_mode, MODE_LOGIN_SHELL)) {
-		/* Set everything except user, group and login name. */
-		flags = LOGIN_SETALL;
-		CLR(flags, LOGIN_SETGROUP|LOGIN_SETLOGIN|LOGIN_SETUSER|LOGIN_SETENV|LOGIN_SETPATH);
-		CLR(details->flags, CD_SET_UMASK); /* LOGIN_UMASK instead */
-	    } else {
-		flags = LOGIN_SETRESOURCES|LOGIN_SETPRIORITY;
-	    }
-	    if (setusercontext(lc, details->pw, details->pw->pw_uid, flags)) {
-		sudo_warn(U_("unable to set user context"));
-		if (details->pw->pw_uid != ROOT_UID)
-		    goto done;
-	    }
-	}
-#endif /* HAVE_LOGIN_CAP_H */
-    }
-
-    if (ISSET(details->flags, CD_SET_GROUPS)) {
-	/* set_user_groups() prints error message on failure. */
-	if (!set_user_groups(details))
-	    goto done;
-    }
-
-    if (ISSET(details->flags, CD_SET_PRIORITY)) {
-	if (setpriority(PRIO_PROCESS, 0, details->priority) != 0) {
-	    sudo_warn(U_("unable to set process priority"));
-	    goto done;
-	}
-    }
-    if (ISSET(details->flags, CD_SET_UMASK))
-	(void) umask(details->umask);
-    if (details->chroot) {
-	if (chroot(details->chroot) != 0 || chdir("/") != 0) {
-	    sudo_warn(U_("unable to change root to %s"), details->chroot);
-	    goto done;
-	}
-    }
-
-    /* 
-     * Unlimit the number of processes since Linux's setuid() will
-     * return EAGAIN if RLIMIT_NPROC would be exceeded by the uid switch.
-     */
-    unlimit_nproc();
-
-#if defined(HAVE_SETRESUID)
-    if (setresuid(details->uid, details->euid, details->euid) != 0) {
-	sudo_warn(U_("unable to change to runas uid (%u, %u)"),
-	    (unsigned int)details->uid, (unsigned int)details->euid);
-	goto done;
-    }
-#elif defined(HAVE_SETREUID)
-    if (setreuid(details->uid, details->euid) != 0) {
-	sudo_warn(U_("unable to change to runas uid (%u, %u)"),
-	    (unsigned int)details->uid, (unsigned int)details->euid);
-	goto done;
-    }
-#else
-    /* Cannot support real user ID that is different from effective user ID. */
-    if (setuid(details->euid) != 0) {
-	sudo_warn(U_("unable to change to runas uid (%u, %u)"),
-	    (unsigned int)details->euid, (unsigned int)details->euid);
-	goto done;
-    }
-#endif /* !HAVE_SETRESUID && !HAVE_SETREUID */
-
-    /* Restore previous value of RLIMIT_NPROC. */
-    restore_nproc();
-
-    /*
-     * Only change cwd if we have chroot()ed or the policy modules
-     * specifies a different cwd.  Must be done after uid change.
-     */
-    if (details->cwd != NULL) {
-	if (details->chroot || user_details.cwd == NULL ||
-	    strcmp(details->cwd, user_details.cwd) != 0) {
-	    /* Note: cwd is relative to the new root, if any. */
-	    if (chdir(details->cwd) != 0) {
-		sudo_warn(U_("unable to change directory to %s"), details->cwd);
-		goto done;
-	    }
-	}
-    }
-
-    ret = true;
-
-done:
     debug_return_bool(ret);
 }
 
@@ -1462,7 +1304,11 @@ iolog_open(struct plugin_container *plugin, struct sudo_settings *settings,
 	    sudo_conversation_printf, plugin_settings, user_info, command_info,
 	    argc, argv, user_env, plugin->options);
     }
+
+    /* Stash plugin debug instance ID if set in open() function. */
+    plugin->debug_instance = sudo_debug_get_active_instance();
     sudo_debug_set_active_instance(sudo_debug_instance);
+
     debug_return_int(ret);
 }
 
@@ -1514,8 +1360,26 @@ iolog_unlink(struct plugin_container *plugin)
     }
     /* Remove from io_plugins list and free. */
     TAILQ_REMOVE(&io_plugins, plugin, entries);
+    free_plugin_container(plugin, true);
+
+    debug_return;
+}
+
+static void
+free_plugin_container(struct plugin_container *plugin, bool ioplugin)
+{
+    debug_decl(free_plugin_container, SUDO_DEBUG_PLUGIN)
+
     free(plugin->path);
-    free(plugin);
+    free(plugin->name);
+    if (plugin->options != NULL) {
+	int i = 0;
+	while (plugin->options[i] != NULL)
+	    free(plugin->options[i++]);
+	free(plugin->options);
+    }
+    if (ioplugin)
+	free(plugin);
 
     debug_return;
 }
@@ -1584,11 +1448,10 @@ gc_run(void)
     }
 
     /* Free plugin structs. */
-    free(policy_plugin.path);
+    free_plugin_container(&policy_plugin, false);
     while ((plugin = TAILQ_FIRST(&io_plugins))) {
 	TAILQ_REMOVE(&io_plugins, plugin, entries);
-	free(plugin->path);
-	free(plugin);
+	free_plugin_container(plugin, true);
     }
 
     debug_return;

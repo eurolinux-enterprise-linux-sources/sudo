@@ -113,32 +113,14 @@ A) You can specify the editor to use in visudo in the sudoers file.
    --with-editor and --with-env-editor configure options.
 
 Q) Sudo appears to be removing some variables from my environment, why?
-A) Sudo removes the following "dangerous" environment variables
-   to guard against shared library spoofing, shell voodoo, and
-   kerberos server spoofing.
-     IFS
-     LOCALDOMAIN
-     RES_OPTIONS
-     HOSTALIASES
-     NLSPATH
-     PATH_LOCALE
-     TERMINFO
-     TERMINFO_DIRS
-     TERMPATH
-     TERMCAP
-     ENV
-     BASH_ENV
-     LC_ (if it contains a '/' or '%')
-     LANG (if it contains a '/' or '%')
-     LANGUAGE (if it contains a '/' or '%')
-     LD_*
-     _RLD_*
-     SHLIB_PATH (HP-UX only)
-     LIBPATH (AIX only)
-     KRB5_CONFIG (kerb5 only)
-     VAR_ACE (SecurID only)
-     USR_ACE (SecurID only)
-     DLC_ACE (SecurID only)
+A) By default, sudo runs commands with  new, minimal environment.
+   It is possible to control what environment variables are copied
+   from the invoking user's environment using the "env_keep" setting
+   in sudoers.  Another, less secure, option is to disable the
+   "env_reset" setting to copy all variables from the invoking
+   user's environment that are not considered "dangerous".  See the
+   "Command Environment" section of the sudoers manual for more
+   information.
 
 Q) How can I keep sudo from asking for a password?
 A) To specify this on a per-user (and per-command) basis, use the
@@ -171,7 +153,6 @@ A) configure caches the results of its tests in a file called
 
 Q) I built sudo on a Solaris 11 (or higher) machine but the resulting
    binary doesn't work older Solaris versions.  Why?
-
 A) Starting with Solaris 11, asprintf(3) is included in the standard
    C library.  To build a version of sudo on a Solaris 11 machine that
    will run on an older Solaris release, edit config.h and comment out
@@ -238,6 +219,14 @@ A) On systems that use a Mozilla-derived LDAP SDK there must be a
     Enter new password: <return>
     Re-enter password: <return>
 
+Q) On Solaris, when I run command via sudo it displays information
+   about the last login for every command.  How can I fix this?
+A) This output comes from /usr/lib/security/pam_unix_session.so.1.
+   To suppress it, first create /etc/pam.d/sudo if it doesn't exist:
+    cp /etc/pam.d/other /etc/pam.d/sudo
+   Then add "nowarn" to the end of the pam_unix_session.so.1 line:
+    session required pam_unix_session.so.1 nowarm
+
 Q) On HP-UX, when I run command via sudo it displays information
    about the last successful login and last authentication failure
    for every command.  How can I fix this?
@@ -250,6 +239,15 @@ A) If your /etc/pam.conf file has the libpam_hpsec.so.1 session module
    enabled, you may need to a add line like the following to pam.conf:
    sudo session required libpam_hpsec.so.1 bypass_umask
 
+Q) When I run "sudo -i shell_alias" I get "command not found" even
+   though the alias is defined in my shell startup files.
+A) Commands run via "sudo -i" are executed by the shell in
+   non-interactive mode.  The bash shell will ony parse aliases in
+   interactive mode unless the "expand_aliases" shell option is
+   set.  If you add "shopt -s expand_aliases" to your .bash_profile
+   (or .profile if using that instead) the aliases should now be
+   available to "sudo -i".
+
 Q) When I run sudo on AIX I get the following error:
     setuidx(ID_EFFECTIVE|ID_REAL|ID_SAVED, ROOT_UID): Operation not permitted.
 A) AIX's Enhanced RBAC is preventing sudo from running.  To fix
@@ -258,7 +256,7 @@ A) AIX's Enhanced RBAC is preventing sudo from running.  To fix
 
     /usr/local/bin/sudo:
 	    accessauths = ALLOW_ALL
-	    innateprivs = PV_DAC_GID,PV_DAC_O,PV_DAC_R,PV_DAC_UID,PV_DAC_W,PV_DAC_X,PV_FS_CHOWN,PV_PROC_ENV,PV_PROC_PRIO,PV_PROC_RAC
+	    innateprivs = PV_DAC_GID,PV_DAC_R,PV_DAC_UID,PV_DAC_X,PV_FS_CHOWN,PV_PROC_PRIO,PV_NET_PORT,PV_NET_CNTL,PV_SU_UID
 	    secflags = FSF_EPS
 
 Q) Sudo configures and builds without error but when I run it I get

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008, 2010-2016 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2004-2008, 2010-2018 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <stdio.h>
@@ -29,6 +28,7 @@
 #ifdef HAVE_STRINGS_H
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
+#include <time.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
@@ -37,12 +37,6 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
-#ifdef HAVE_SELINUX
-# include <selinux/selinux.h>
-#endif
 
 #include "sudo.h"
 #include "sudo_exec.h"
@@ -60,40 +54,6 @@ struct tempfile {
 };
 
 static char edit_tmpdir[MAX(sizeof(_PATH_VARTMP), sizeof(_PATH_TMP))];
-
-/*
- * Find our temporary directory, one of /var/tmp, /usr/tmp, or /tmp
- * Returns true on success, else false;
- */
-static bool
-set_tmpdir(void)
-{
-    const char *tdir;
-    struct stat sb;
-    size_t len;
-    debug_decl(set_tmpdir, SUDO_DEBUG_EDIT)
-
-    if (stat(_PATH_VARTMP, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-	tdir = _PATH_VARTMP;
-    }
-#ifdef _PATH_USRTMP
-    else if (stat(_PATH_USRTMP, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-	tdir = _PATH_USRTMP;
-    }
-#endif
-    else {
-	tdir = _PATH_TMP;
-    }
-    len = strlcpy(edit_tmpdir, tdir, sizeof(edit_tmpdir));
-    if (len >= sizeof(edit_tmpdir)) {
-	errno = ENAMETOOLONG;
-	sudo_warn("%s", tdir);
-	debug_return_bool(false);
-    }
-    while (len > 0 && edit_tmpdir[--len] == '/')
-	edit_tmpdir[len] = '\0';
-    debug_return_bool(true);
-}
 
 static void
 switch_user(uid_t euid, gid_t egid, int ngroups, GETGROUPS_T *groups)
@@ -123,157 +83,6 @@ switch_user(uid_t euid, gid_t egid, int ngroups, GETGROUPS_T *groups)
 
     debug_return;
 }
-
-/*
- * Construct a temporary file name for file and return an
- * open file descriptor.  The temporary file name is stored
- * in tfile which the caller is responsible for freeing.
- */
-static int
-sudo_edit_mktemp(const char *ofile, char **tfile)
-{
-    const char *cp, *suff;
-    int len, tfd;
-    debug_decl(sudo_edit_mktemp, SUDO_DEBUG_EDIT)
-
-    if ((cp = strrchr(ofile, '/')) != NULL)
-	cp++;
-    else
-	cp = ofile;
-    suff = strrchr(cp, '.');
-    if (suff != NULL) {
-	len = asprintf(tfile, "%s/%.*sXXXXXXXX%s", edit_tmpdir,
-	    (int)(size_t)(suff - cp), cp, suff);
-    } else {
-	len = asprintf(tfile, "%s/%s.XXXXXXXX", edit_tmpdir, cp);
-    }
-    if (len == -1)
-	sudo_fatalx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
-    tfd = mkstemps(*tfile, suff ? strlen(suff) : 0);
-    sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
-	"%s -> %s, fd %d", ofile, *tfile, tfd);
-    debug_return_int(tfd);
-}
-
-#ifndef HAVE_OPENAT
-static int
-sudo_openat(int dfd, const char *path, int flags, mode_t mode)
-{
-    int fd, odfd;
-    debug_decl(sudo_openat, SUDO_DEBUG_EDIT)
-
-    if (dfd == AT_FDCWD)
-	debug_return_int(open(path, flags, mode));
-
-    /* Save cwd */
-    if ((odfd = open(".", O_RDONLY)) == -1)
-	debug_return_int(-1);
-
-    if (fchdir(dfd) == -1) {
-	close(odfd);
-	debug_return_int(-1);
-    }
-
-    fd = open(path, flags, mode);
-
-    /* Restore cwd */
-    if (fchdir(odfd) == -1)
-	sudo_fatal(_("unable to restore current working directory"));
-    close(odfd);
-
-    debug_return_int(fd);
-}
-#define openat sudo_openat
-#endif /* HAVE_OPENAT */
-
-#ifdef O_NOFOLLOW
-static int
-sudo_edit_openat_nofollow(int dfd, char *path, int oflags, mode_t mode)
-{
-    debug_decl(sudo_edit_openat_nofollow, SUDO_DEBUG_EDIT)
-
-    debug_return_int(openat(dfd, path, oflags|O_NOFOLLOW, mode));
-}
-#else
-/*
- * Returns true if fd and path don't match or path is a symlink.
- * Used on older systems without O_NOFOLLOW.
- */
-static bool
-sudo_edit_is_symlink(int fd, char *path)
-{
-    struct stat sb1, sb2;
-    debug_decl(sudo_edit_is_symlink, SUDO_DEBUG_EDIT)
-
-    /*
-     * Treat [fl]stat() failure like there was a symlink.
-     */
-    if (fstat(fd, &sb1) == -1 || lstat(path, &sb2) == -1)
-	debug_return_bool(true);
-
-    /*
-     * Make sure we did not open a link and that what we opened
-     * matches what is currently on the file system.
-     */
-    if (S_ISLNK(sb2.st_mode) ||
-	sb1.st_dev != sb2.st_dev || sb1.st_ino != sb2.st_ino) {
-	debug_return_bool(true);
-    }
-
-    debug_return_bool(false);
-}
-
-static int
-sudo_edit_openat_nofollow(int dfd, char *path, int oflags, mode_t mode)
-{
-    int fd = -1, odfd = -1;
-    struct stat sb;
-    debug_decl(sudo_edit_openat_nofollow, SUDO_DEBUG_EDIT)
-
-    /* Save cwd and chdir to dfd */
-    if ((odfd = open(".", O_RDONLY)) == -1)
-	debug_return_int(-1);
-    if (fchdir(dfd) == -1) {
-	close(odfd);
-	debug_return_int(-1);
-    }
-
-    /*
-     * Check if path is a symlink.  This is racey but we detect whether
-     * we lost the race in sudo_edit_is_symlink() after the open.
-     */
-    if (lstat(path, &sb) == -1 && errno != ENOENT)
-	goto done;
-    if (S_ISLNK(sb.st_mode)) {
-	errno = ELOOP;
-	goto done;
-    }
-
-    fd = open(path, oflags, mode);
-    if (fd == -1)
-	goto done;
-
-    /*
-     * Post-open symlink check.  This will leave a zero-length file if
-     * O_CREAT was specified but it is too dangerous to try and remove it.
-     */
-    if (sudo_edit_is_symlink(fd, path)) {
-	close(fd);
-	fd = -1;
-	errno = ELOOP;
-    }
-
-done:
-    /* Restore cwd */
-    if (odfd != -1) {
-	if (fchdir(odfd) == -1)
-	    sudo_fatal(_("unable to restore current working directory"));
-	close(odfd);
-    }
-
-    debug_return_int(fd);
-}
-#endif /* O_NOFOLLOW */
 
 #ifdef HAVE_FACCESSAT
 /*
@@ -372,6 +181,198 @@ dir_is_writable(int dfd, struct user_details *ud, struct command_details *cd)
     debug_return_int(false);
 }
 #endif /* HAVE_FACCESSAT */
+
+/*
+ * Find our temporary directory, one of /var/tmp, /usr/tmp, or /tmp
+ * Returns true on success, else false;
+ */
+static bool
+set_tmpdir(struct command_details *command_details)
+{
+    const char *tdir = NULL;
+    const char *tmpdirs[] = {
+	_PATH_VARTMP,
+#ifdef _PATH_USRTMP
+	_PATH_USRTMP,
+#endif
+	_PATH_TMP
+    };
+    unsigned int i;
+    size_t len;
+    int dfd;
+    debug_decl(set_tmpdir, SUDO_DEBUG_EDIT)
+
+    for (i = 0; tdir == NULL && i < nitems(tmpdirs); i++) {
+	if ((dfd = open(tmpdirs[i], O_RDONLY)) != -1) {
+	    if (dir_is_writable(dfd, &user_details, command_details) == true)
+		tdir = tmpdirs[i];
+	    close(dfd);
+	}
+    }
+    if (tdir == NULL)
+	sudo_fatalx(U_("no writable temporary directory found"));
+   
+    len = strlcpy(edit_tmpdir, tdir, sizeof(edit_tmpdir));
+    if (len >= sizeof(edit_tmpdir)) {
+	errno = ENAMETOOLONG;
+	sudo_warn("%s", tdir);
+	debug_return_bool(false);
+    }
+    while (len > 0 && edit_tmpdir[--len] == '/')
+	edit_tmpdir[len] = '\0';
+    debug_return_bool(true);
+}
+
+/*
+ * Construct a temporary file name for file and return an
+ * open file descriptor.  The temporary file name is stored
+ * in tfile which the caller is responsible for freeing.
+ */
+static int
+sudo_edit_mktemp(const char *ofile, char **tfile)
+{
+    const char *cp, *suff;
+    int len, tfd;
+    debug_decl(sudo_edit_mktemp, SUDO_DEBUG_EDIT)
+
+    if ((cp = strrchr(ofile, '/')) != NULL)
+	cp++;
+    else
+	cp = ofile;
+    suff = strrchr(cp, '.');
+    if (suff != NULL) {
+	len = asprintf(tfile, "%s/%.*sXXXXXXXX%s", edit_tmpdir,
+	    (int)(size_t)(suff - cp), cp, suff);
+    } else {
+	len = asprintf(tfile, "%s/%s.XXXXXXXX", edit_tmpdir, cp);
+    }
+    if (len == -1)
+	sudo_fatalx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
+    tfd = mkstemps(*tfile, suff ? strlen(suff) : 0);
+    sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
+	"%s -> %s, fd %d", ofile, *tfile, tfd);
+    debug_return_int(tfd);
+}
+
+#ifndef HAVE_OPENAT
+static int
+sudo_openat(int dfd, const char *path, int flags, mode_t mode)
+{
+    int fd, odfd;
+    debug_decl(sudo_openat, SUDO_DEBUG_EDIT)
+
+    if (dfd == AT_FDCWD)
+	debug_return_int(open(path, flags, mode));
+
+    /* Save cwd */
+    if ((odfd = open(".", O_RDONLY)) == -1)
+	debug_return_int(-1);
+
+    if (fchdir(dfd) == -1) {
+	close(odfd);
+	debug_return_int(-1);
+    }
+
+    fd = open(path, flags, mode);
+
+    /* Restore cwd */
+    if (fchdir(odfd) == -1)
+	sudo_fatal(U_("unable to restore current working directory"));
+    close(odfd);
+
+    debug_return_int(fd);
+}
+#define openat sudo_openat
+#endif /* HAVE_OPENAT */
+
+#ifdef O_NOFOLLOW
+static int
+sudo_edit_openat_nofollow(int dfd, char *path, int oflags, mode_t mode)
+{
+    debug_decl(sudo_edit_openat_nofollow, SUDO_DEBUG_EDIT)
+
+    debug_return_int(openat(dfd, path, oflags|O_NOFOLLOW, mode));
+}
+#else
+/*
+ * Returns true if fd and path don't match or path is a symlink.
+ * Used on older systems without O_NOFOLLOW.
+ */
+static bool
+sudo_edit_is_symlink(int fd, char *path)
+{
+    struct stat sb1, sb2;
+    debug_decl(sudo_edit_is_symlink, SUDO_DEBUG_EDIT)
+
+    /*
+     * Treat [fl]stat() failure like there was a symlink.
+     */
+    if (fstat(fd, &sb1) == -1 || lstat(path, &sb2) == -1)
+	debug_return_bool(true);
+
+    /*
+     * Make sure we did not open a link and that what we opened
+     * matches what is currently on the file system.
+     */
+    if (S_ISLNK(sb2.st_mode) ||
+	sb1.st_dev != sb2.st_dev || sb1.st_ino != sb2.st_ino) {
+	debug_return_bool(true);
+    }
+
+    debug_return_bool(false);
+}
+
+static int
+sudo_edit_openat_nofollow(int dfd, char *path, int oflags, mode_t mode)
+{
+    int fd = -1, odfd = -1;
+    struct stat sb;
+    debug_decl(sudo_edit_openat_nofollow, SUDO_DEBUG_EDIT)
+
+    /* Save cwd and chdir to dfd */
+    if ((odfd = open(".", O_RDONLY)) == -1)
+	debug_return_int(-1);
+    if (fchdir(dfd) == -1) {
+	close(odfd);
+	debug_return_int(-1);
+    }
+
+    /*
+     * Check if path is a symlink.  This is racey but we detect whether
+     * we lost the race in sudo_edit_is_symlink() after the open.
+     */
+    if (lstat(path, &sb) == -1 && errno != ENOENT)
+	goto done;
+    if (S_ISLNK(sb.st_mode)) {
+	errno = ELOOP;
+	goto done;
+    }
+
+    fd = open(path, oflags, mode);
+    if (fd == -1)
+	goto done;
+
+    /*
+     * Post-open symlink check.  This will leave a zero-length file if
+     * O_CREAT was specified but it is too dangerous to try and remove it.
+     */
+    if (sudo_edit_is_symlink(fd, path)) {
+	close(fd);
+	fd = -1;
+	errno = ELOOP;
+    }
+
+done:
+    /* Restore cwd */
+    if (odfd != -1) {
+	if (fchdir(odfd) == -1)
+	    sudo_fatal(U_("unable to restore current working directory"));
+	close(odfd);
+    }
+
+    debug_return_int(fd);
+}
+#endif /* O_NOFOLLOW */
 
 /*
  * Directory open flags for use with openat(2).
@@ -703,7 +704,6 @@ sudo_edit_copy_tfiles(struct command_details *command_details,
 		sudo_warnx(U_("%s unchanged"), tf[i].ofile);
 		unlink(tf[i].tfile);
 		close(tfd);
-		errors++;
 		continue;
 	    }
 	}
@@ -816,11 +816,11 @@ selinux_edit_create_tfiles(struct command_details *command_details,
     case SESH_SUCCESS:
 	break;
     case SESH_ERR_BAD_PATHS:
-	sudo_fatalx(_("sesh: internal error: odd number of paths"));
+	sudo_fatalx(U_("sesh: internal error: odd number of paths"));
     case SESH_ERR_NO_FILES:
-	sudo_fatalx(_("sesh: unable to create temporary files"));
+	sudo_fatalx(U_("sesh: unable to create temporary files"));
     default:
-	sudo_fatalx(_("sesh: unknown error %d"), rc);
+	sudo_fatalx(U_("sesh: unknown error %d"), rc);
     }
 
     /* Restore saved command_details. */
@@ -910,15 +910,15 @@ selinux_edit_copy_tfiles(struct command_details *command_details,
 	    ret = 0;
 	    break;
 	case SESH_ERR_NO_FILES:
-	    sudo_warnx(_("unable to copy temporary files back to their original location"));
+	    sudo_warnx(U_("unable to copy temporary files back to their original location"));
 	    sudo_warnx(U_("contents of edit session left in %s"), edit_tmpdir);
 	    break;
 	case SESH_ERR_SOME_FILES:
-	    sudo_warnx(_("unable to copy some of the temporary files back to their original location"));
+	    sudo_warnx(U_("unable to copy some of the temporary files back to their original location"));
 	    sudo_warnx(U_("contents of edit session left in %s"), edit_tmpdir);
 	    break;
 	default:
-	    sudo_warnx(_("sesh: unknown error %d"), rc);
+	    sudo_warnx(U_("sesh: unknown error %d"), rc);
 	    break;
 	}
     }
@@ -935,7 +935,8 @@ selinux_edit_copy_tfiles(struct command_details *command_details,
 
 /*
  * Wrapper to allow users to edit privileged files with their own uid.
- * Returns 0 on success and 1 on failure.
+ * Returns the wait status of the command on success and a wait status
+ * of 1 on failure.
  */
 int
 sudo_edit(struct command_details *command_details)
@@ -948,7 +949,7 @@ sudo_edit(struct command_details *command_details)
     struct tempfile *tf = NULL;
     debug_decl(sudo_edit, SUDO_DEBUG_EDIT)
 
-    if (!set_tmpdir())
+    if (!set_tmpdir(command_details))
 	goto cleanup;
 
     /*
@@ -1049,12 +1050,14 @@ sudo_edit(struct command_details *command_details)
     else
 #endif
 	errors = sudo_edit_copy_tfiles(command_details, tf, nfiles, times);
+    if (errors)
+	goto cleanup;
 
     for (i = 0; i < nfiles; i++)
 	free(tf[i].tfile);
     free(tf);
     free(nargv);
-    debug_return_int(errors ? 1 : rc);
+    debug_return_int(rc);
 
 cleanup:
     /* Clean up temp files and return. */
@@ -1066,7 +1069,7 @@ cleanup:
     }
     free(tf);
     free(nargv);
-    debug_return_int(1);
+    debug_return_int(W_EXITCODE(1, 0));
 }
 
 #else /* HAVE_SETRESUID || HAVE_SETREUID || HAVE_SETEUID */
@@ -1078,7 +1081,7 @@ int
 sudo_edit(struct command_details *command_details)
 {
     debug_decl(sudo_edit, SUDO_DEBUG_EDIT)
-    debug_return_int(1);
+    debug_return_int(W_EXITCODE(1, 0));
 }
 
 #endif /* HAVE_SETRESUID || HAVE_SETREUID || HAVE_SETEUID */

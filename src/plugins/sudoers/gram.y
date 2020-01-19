@@ -1,7 +1,7 @@
 %{
 /*
- * Copyright (c) 1996, 1998-2005, 2007-2013, 2014-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 1996, 1998-2005, 2007-2013, 2014-2017
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -43,7 +43,7 @@
 #if defined(YYBISON) && defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
 # include <alloca.h>
 #endif /* YYBISON && HAVE_ALLOCA_H && !__GNUC__ */
-#include <limits.h>
+#include <errno.h>
 
 #include "sudoers.h" /* XXX */
 #include "parse.h"
@@ -66,11 +66,12 @@ struct userspec_list userspecs = TAILQ_HEAD_INITIALIZER(userspecs);
 /*
  * Local protoypes
  */
+static void init_options(struct command_options *opts);
 static bool add_defaults(int, struct member *, struct defaults *);
 static bool add_userspec(struct member *, struct privilege *);
 static struct defaults *new_default(char *, char *, short);
 static struct member *new_member(char *, int);
-static struct sudo_digest *new_digest(int, const char *);
+static struct sudo_digest *new_digest(int, char *);
 %}
 
 %union {
@@ -81,9 +82,8 @@ static struct sudo_digest *new_digest(int, const char *);
     struct privilege *privilege;
     struct sudo_digest *digest;
     struct sudo_command command;
+    struct command_options options;
     struct cmndtag tag;
-    struct selinux_info seinfo;
-    struct solaris_privs_info privinfo;
     char *string;
     int tok;
 }
@@ -129,6 +129,9 @@ static struct sudo_digest *new_digest(int, const char *);
 %token <tok>	 ROLE			/* SELinux role */
 %token <tok>	 PRIVS			/* Solaris privileges */
 %token <tok>	 LIMITPRIVS		/* Solaris limit privileges */
+%token <tok>	 CMND_TIMEOUT		/* command timeout */
+%token <tok>	 NOTBEFORE		/* time restriction */
+%token <tok>	 NOTAFTER		/* time restriction */
 %token <tok>	 MYSELF			/* run as myself, not another user */
 %token <tok>	 SHA224_TOK		/* sha224 token */
 %token <tok>	 SHA256_TOK		/* sha256 token */
@@ -157,12 +160,14 @@ static struct sudo_digest *new_digest(int, const char *);
 %type <privilege> privilege
 %type <privilege> privileges
 %type <tag>	  cmndtag
-%type <seinfo>	  selinux
+%type <options>	  options
 %type <string>	  rolespec
 %type <string>	  typespec
-%type <privinfo>  solarisprivs
 %type <string>	  privsspec
 %type <string>	  limitprivsspec
+%type <string>	  timeoutspec
+%type <string>	  notbeforespec
+%type <string>	  notafterspec
 %type <digest>	  digest
 
 %%
@@ -278,6 +283,7 @@ privilege	:	hostlist '=' cmndspeclist {
 				sudoerserror(N_("unable to allocate memory"));
 				YYERROR;
 			    }
+			    TAILQ_INIT(&p->defaults);
 			    HLTQ_TO_TAILQ(&p->hostlist, $1, entries);
 			    HLTQ_TO_TAILQ(&p->cmndlist, $3, entries);
 			    HLTQ_INIT(p, entries);
@@ -339,18 +345,26 @@ cmndspeclist	:	cmndspec
 			    HLTQ_CONCAT($1, $3, entries);
 #ifdef HAVE_SELINUX
 			    /* propagate role and type */
-			    if ($3->role == NULL)
+			    if ($3->role == NULL && $3->type == NULL) {
 				$3->role = prev->role;
-			    if ($3->type == NULL)
 				$3->type = prev->type;
+			    }
 #endif /* HAVE_SELINUX */
 #ifdef HAVE_PRIV_SET
 			    /* propagate privs & limitprivs */
-			    if ($3->privs == NULL)
+			    if ($3->privs == NULL && $3->limitprivs == NULL) {
 			        $3->privs = prev->privs;
-			    if ($3->limitprivs == NULL)
 			        $3->limitprivs = prev->limitprivs;
+			    }
 #endif /* HAVE_PRIV_SET */
+			    /* propagate command time restrictions */
+			    if ($3->notbefore == UNSPEC)
+				$3->notbefore = prev->notbefore;
+			    if ($3->notafter == UNSPEC)
+				$3->notafter = prev->notafter;
+			    /* propagate command timeout */
+			    if ($3->timeout == UNSPEC)
+				$3->timeout = prev->timeout;
 			    /* propagate tags and runas list */
 			    if ($3->tags.nopasswd == UNSPEC)
 				$3->tags.nopasswd = prev->tags.nopasswd;
@@ -378,7 +392,7 @@ cmndspeclist	:	cmndspec
 			}
 		;
 
-cmndspec	:	runasspec selinux solarisprivs cmndtag digcmnd {
+cmndspec	:	runasspec options cmndtag digcmnd {
 			    struct cmndspec *cs = calloc(1, sizeof(*cs));
 			    if (cs == NULL) {
 				sudoerserror(N_("unable to allocate memory"));
@@ -412,11 +426,14 @@ cmndspec	:	runasspec selinux solarisprivs cmndtag digcmnd {
 			    cs->type = $2.type;
 #endif
 #ifdef HAVE_PRIV_SET
-			    cs->privs = $3.privs;
-			    cs->limitprivs = $3.limitprivs;
+			    cs->privs = $2.privs;
+			    cs->limitprivs = $2.limitprivs;
 #endif
-			    cs->tags = $4;
-			    cs->cmnd = $5;
+			    cs->notbefore = $2.notbefore;
+			    cs->notafter = $2.notafter;
+			    cs->timeout = $2.timeout;
+			    cs->tags = $3;
+			    cs->cmnd = $4;
 			    HLTQ_INIT(cs, entries);
 			    /* sudo "ALL" implies the SETENV tag */
 			    if (cs->cmnd->type == ALL && !cs->cmnd->negated &&
@@ -480,6 +497,20 @@ opcmnd		:	cmnd {
 			}
 		;
 
+timeoutspec	:	CMND_TIMEOUT '=' WORD {
+			    $$ = $3;
+			}
+		;
+
+notbeforespec	:	NOTBEFORE '=' WORD {
+			    $$ = $3;
+			}
+
+notafterspec	:	NOTAFTER '=' WORD {
+			    $$ = $3;
+			}
+		;
+
 rolespec	:	ROLE '=' WORD {
 			    $$ = $3;
 			}
@@ -490,56 +521,12 @@ typespec	:	TYPE '=' WORD {
 			}
 		;
 
-selinux		:	/* empty */ {
-			    $$.role = NULL;
-			    $$.type = NULL;
-			}
-		|	rolespec {
-			    $$.role = $1;
-			    $$.type = NULL;
-			}
-		|	typespec {
-			    $$.type = $1;
-			    $$.role = NULL;
-			}
-		|	rolespec typespec {
-			    $$.role = $1;
-			    $$.type = $2;
-			}
-		|	typespec rolespec {
-			    $$.type = $1;
-			    $$.role = $2;
-			}
-		;
-
 privsspec	:	PRIVS '=' WORD {
 			    $$ = $3;
 			}
 		;
 limitprivsspec	:	LIMITPRIVS '=' WORD {
 			    $$ = $3;
-			}
-		;
-
-solarisprivs	:	/* empty */ {
-			    $$.privs = NULL;
-			    $$.limitprivs = NULL;
-			}
-		|	privsspec {
-			    $$.privs = $1;
-			    $$.limitprivs = NULL;
-			}
-		|	limitprivsspec {
-			    $$.privs = NULL;
-			    $$.limitprivs = $1;
-			}
-		|	privsspec limitprivsspec {
-			    $$.privs = $1;
-			    $$.limitprivs = $2;
-			}
-		|	limitprivsspec privsspec {
-			    $$.limitprivs = $1;
-			    $$.privs = $2;
 			}
 		;
 
@@ -607,6 +594,62 @@ runaslist	:	/* empty */ {
 				sudoerserror(N_("unable to allocate memory"));
 				YYERROR;
 			    }
+			}
+		;
+
+options		:	/* empty */ {
+			    init_options(&$$);
+			}
+		|	options notbeforespec {
+			    $$.notbefore = parse_gentime($2);
+			    free($2);
+			    if ($$.notbefore == -1) {
+				sudoerserror(N_("invalid notbefore value"));
+				YYERROR;
+			    }
+			}
+		|	options notafterspec {
+			    $$.notafter = parse_gentime($2);
+			    free($2);
+			    if ($$.notafter == -1) {
+				sudoerserror(N_("invalid notafter value"));
+				YYERROR;
+			    }
+			}
+		|	options timeoutspec {
+			    $$.timeout = parse_timeout($2);
+			    free($2);
+			    if ($$.timeout == -1) {
+				if (errno == ERANGE)
+				    sudoerserror(N_("timeout value too large"));
+				else
+				    sudoerserror(N_("invalid timeout value"));
+				YYERROR;
+			    }
+			}
+		|	options rolespec {
+#ifdef HAVE_SELINUX
+			    free($$.role);
+			    $$.role = $2;
+#endif
+			}
+		|	options typespec {
+#ifdef HAVE_SELINUX
+			    free($$.type);
+			    $$.type = $2;
+#endif
+			}
+		|	options privsspec {
+#ifdef HAVE_PRIV_SET
+			    free($$.privs);
+			    $$.privs = $2;
+#endif
+			}
+		|	options limitprivsspec {
+#ifdef HAVE_PRIV_SET
+			    free($$.limitprivs);
+			    $$.limitprivs = $2;
+#endif
 			}
 		;
 
@@ -926,7 +969,7 @@ new_member(char *name, int type)
 }
 
 static struct sudo_digest *
-new_digest(int digest_type, const char *digest_str)
+new_digest(int digest_type, char *digest_str)
 {
     struct sudo_digest *dig;
     debug_decl(new_digest, SUDOERS_DEBUG_PARSER)
@@ -938,7 +981,7 @@ new_digest(int digest_type, const char *digest_str)
     }
 
     dig->digest_type = digest_type;
-    dig->digest_str = strdup(digest_str);
+    dig->digest_str = digest_str;
     if (dig->digest_str == NULL) {
 	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
 	    "unable to allocate memory");
@@ -1010,9 +1053,33 @@ add_userspec(struct member *members, struct privilege *privs)
     u->file = rcstr_addref(sudoers);
     HLTQ_TO_TAILQ(&u->users, members, entries);
     HLTQ_TO_TAILQ(&u->privileges, privs, entries);
+    STAILQ_INIT(&u->comments);
     TAILQ_INSERT_TAIL(&userspecs, u, entries);
 
     debug_return_bool(true);
+}
+
+/*
+ * Free a member struct and its contents.
+ */
+void
+free_member(struct member *m)
+{
+    debug_decl(free_member, SUDOERS_DEBUG_PARSER)
+
+    if (m->type == COMMAND) {
+	    struct sudo_command *c = (struct sudo_command *)m->name;
+	    free(c->cmnd);
+	    free(c->args);
+	    if (c->digest != NULL) {
+		free(c->digest->digest_str);
+		free(c->digest);
+	    }
+    }
+    free(m->name);
+    free(m);
+
+    debug_return;
 }
 
 /*
@@ -1021,18 +1088,122 @@ add_userspec(struct member *members, struct privilege *privs)
 void
 free_members(struct member_list *members)
 {
-    struct member *m, *next;
-    struct sudo_command *c;
+    struct member *m;
+    debug_decl(free_members, SUDOERS_DEBUG_PARSER)
 
-    TAILQ_FOREACH_SAFE(m, members, entries, next) {
-	if (m->type == COMMAND) {
-		c = (struct sudo_command *) m->name;
-		free(c->cmnd);
-		free(c->args);
-	}
-	free(m->name);
-	free(m);
+    while ((m = TAILQ_FIRST(members)) != NULL) {
+	TAILQ_REMOVE(members, m, entries);
+	free_member(m);
     }
+
+    debug_return;
+}
+
+void
+free_default(struct defaults *def, struct member_list **binding)
+{
+    debug_decl(free_default, SUDOERS_DEBUG_PARSER)
+
+    if (def->binding != *binding) {
+	*binding = def->binding;
+	if (def->binding != NULL) {
+	    free_members(def->binding);
+	    free(def->binding);
+	}
+    }
+    rcstr_delref(def->file);
+    free(def->var);
+    free(def->val);
+    free(def);
+
+    debug_return;
+}
+
+void
+free_privilege(struct privilege *priv)
+{
+    struct member_list *runasuserlist = NULL, *runasgrouplist = NULL;
+    struct member_list *prev_binding = NULL;
+    struct cmndspec *cs;
+    struct defaults *def;
+#ifdef HAVE_SELINUX
+    char *role = NULL, *type = NULL;
+#endif /* HAVE_SELINUX */
+#ifdef HAVE_PRIV_SET
+    char *privs = NULL, *limitprivs = NULL;
+#endif /* HAVE_PRIV_SET */
+    debug_decl(free_privilege, SUDOERS_DEBUG_PARSER)
+
+    free(priv->ldap_role);
+    free_members(&priv->hostlist);
+    while ((cs = TAILQ_FIRST(&priv->cmndlist)) != NULL) {
+	TAILQ_REMOVE(&priv->cmndlist, cs, entries);
+#ifdef HAVE_SELINUX
+	/* Only free the first instance of a role/type. */
+	if (cs->role != role) {
+	    role = cs->role;
+	    free(cs->role);
+	}
+	if (cs->type != type) {
+	    type = cs->type;
+	    free(cs->type);
+	}
+#endif /* HAVE_SELINUX */
+#ifdef HAVE_PRIV_SET
+	/* Only free the first instance of privs/limitprivs. */
+	if (cs->privs != privs) {
+	    privs = cs->privs;
+	    free(cs->privs);
+	}
+	if (cs->limitprivs != limitprivs) {
+	    limitprivs = cs->limitprivs;
+	    free(cs->limitprivs);
+	}
+#endif /* HAVE_PRIV_SET */
+	/* Only free the first instance of runas user/group lists. */
+	if (cs->runasuserlist && cs->runasuserlist != runasuserlist) {
+	    runasuserlist = cs->runasuserlist;
+	    free_members(runasuserlist);
+	    free(runasuserlist);
+	}
+	if (cs->runasgrouplist && cs->runasgrouplist != runasgrouplist) {
+	    runasgrouplist = cs->runasgrouplist;
+	    free_members(runasgrouplist);
+	    free(runasgrouplist);
+	}
+	free_member(cs->cmnd);
+	free(cs);
+    }
+    while ((def = TAILQ_FIRST(&priv->defaults)) != NULL) {
+	TAILQ_REMOVE(&priv->defaults, def, entries);
+	free_default(def, &prev_binding);
+    }
+    free(priv);
+
+    debug_return;
+}
+
+void
+free_userspec(struct userspec *us)
+{
+    struct privilege *priv;
+    struct sudoers_comment *comment;
+    debug_decl(free_userspec, SUDOERS_DEBUG_PARSER)
+
+    free_members(&us->users);
+    while ((priv = TAILQ_FIRST(&us->privileges)) != NULL) {
+	TAILQ_REMOVE(&us->privileges, priv, entries);
+	free_privilege(priv);
+    }
+    while ((comment = STAILQ_FIRST(&us->comments)) != NULL) {
+	STAILQ_REMOVE_HEAD(&us->comments, entries);
+	free(comment->str);
+	free(comment);
+    }
+    rcstr_delref(us->file);
+    free(us);
+
+    debug_return;
 }
 
 /*
@@ -1042,103 +1213,20 @@ free_members(struct member_list *members)
 bool
 init_parser(const char *path, bool quiet)
 {
-    struct member_list *binding;
-    struct defaults *d, *d_next;
-    struct userspec *us, *us_next;
+    struct member_list *prev_binding = NULL;
+    struct defaults *def;
+    struct userspec *us;
     bool ret = true;
+    void *next;
     debug_decl(init_parser, SUDOERS_DEBUG_PARSER)
 
-    /* XXX - move into a free function */
-    TAILQ_FOREACH_SAFE(us, &userspecs, entries, us_next) {
-	struct member *m, *m_next;
-	struct privilege *priv, *priv_next;
-
-	TAILQ_FOREACH_SAFE(m, &us->users, entries, m_next) {
-	    free(m->name);
-	    free(m);
-	}
-	TAILQ_FOREACH_SAFE(priv, &us->privileges, entries, priv_next) {
-	    struct member_list *runasuserlist = NULL, *runasgrouplist = NULL;
-	    struct cmndspec *cs, *cs_next;
-#ifdef HAVE_SELINUX
-	    char *role = NULL, *type = NULL;
-#endif /* HAVE_SELINUX */
-#ifdef HAVE_PRIV_SET
-	    char *privs = NULL, *limitprivs = NULL;
-#endif /* HAVE_PRIV_SET */
-
-	    TAILQ_FOREACH_SAFE(m, &priv->hostlist, entries, m_next) {
-		free(m->name);
-		free(m);
-	    }
-	    TAILQ_FOREACH_SAFE(cs, &priv->cmndlist, entries, cs_next) {
-#ifdef HAVE_SELINUX
-		/* Only free the first instance of a role/type. */
-		if (cs->role != role) {
-		    role = cs->role;
-		    free(cs->role);
-		}
-		if (cs->type != type) {
-		    type = cs->type;
-		    free(cs->type);
-		}
-#endif /* HAVE_SELINUX */
-#ifdef HAVE_PRIV_SET
-		/* Only free the first instance of privs/limitprivs. */
-		if (cs->privs != privs) {
-		    privs = cs->privs;
-		    free(cs->privs);
-		}
-		if (cs->limitprivs != limitprivs) {
-		    limitprivs = cs->limitprivs;
-		    free(cs->limitprivs);
-		}
-#endif /* HAVE_PRIV_SET */
-		/* Only free the first instance of runas user/group lists. */
-		if (cs->runasuserlist && cs->runasuserlist != runasuserlist) {
-		    runasuserlist = cs->runasuserlist;
-		    TAILQ_FOREACH_SAFE(m, runasuserlist, entries, m_next) {
-			free(m->name);
-			free(m);
-		    }
-		    free(runasuserlist);
-		}
-		if (cs->runasgrouplist && cs->runasgrouplist != runasgrouplist) {
-		    runasgrouplist = cs->runasgrouplist;
-		    TAILQ_FOREACH_SAFE(m, runasgrouplist, entries, m_next) {
-			free(m->name);
-			free(m);
-		    }
-		    free(runasgrouplist);
-		}
-		if (cs->cmnd->type == COMMAND) {
-			struct sudo_command *c =
-			    (struct sudo_command *) cs->cmnd->name;
-			free(c->cmnd);
-			free(c->args);
-		}
-		free(cs->cmnd->name);
-		free(cs->cmnd);
-		free(cs);
-	    }
-	    free(priv);
-	}
-	rcstr_delref(us->file);
-	free(us);
+    TAILQ_FOREACH_SAFE(us, &userspecs, entries, next) {
+	free_userspec(us);
     }
     TAILQ_INIT(&userspecs);
 
-    binding = NULL;
-    TAILQ_FOREACH_SAFE(d, &defaults, entries, d_next) {
-	if (d->binding != binding) {
-	    binding = d->binding;
-	    free_members(d->binding);
-	    free(d->binding);
-	}
-	rcstr_delref(d->file);
-	free(d->var);
-	free(d->val);
-	free(d);
+    TAILQ_FOREACH_SAFE(def, &defaults, entries, next) {
+	free_default(def, &prev_binding);
     }
     TAILQ_INIT(&defaults);
 
@@ -1166,4 +1254,23 @@ init_parser(const char *path, bool quiet)
     sudoers_warnings = !quiet;
 
     debug_return_bool(ret);
+}
+
+/*
+ * Initialize all options in a cmndspec.
+ */
+static void
+init_options(struct command_options *opts)
+{
+    opts->notbefore = UNSPEC;
+    opts->notafter = UNSPEC;
+    opts->timeout = UNSPEC;
+#ifdef HAVE_SELINUX
+    opts->role = NULL;
+    opts->type = NULL;
+#endif
+#ifdef HAVE_PRIV_SET
+    opts->privs = NULL;
+    opts->limitprivs = NULL;
+#endif
 }

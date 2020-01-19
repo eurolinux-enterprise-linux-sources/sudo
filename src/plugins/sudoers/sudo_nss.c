@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2015 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2007-2015 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -268,8 +268,7 @@ output(const char *buf)
 
 /*
  * Print out privileges for the specified user.
- * Returns true if the user is allowed to run commands, false if not
- * or -1 on error.
+ * Returns true on success or -1 on error.
  */
 int
 display_privs(struct sudo_nss_list *snl, struct passwd *pw)
@@ -348,7 +347,7 @@ display_privs(struct sudo_nss_list *snl, struct passwd *pw)
     sudo_lbuf_destroy(&defs);
     sudo_lbuf_destroy(&privs);
 
-    debug_return_int(count > 0);
+    debug_return_int(true);
 bad:
     sudo_lbuf_destroy(&defs);
     sudo_lbuf_destroy(&privs);

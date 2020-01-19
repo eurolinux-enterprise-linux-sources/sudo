@@ -9,10 +9,10 @@ SSYYNNOOPPSSIISS
      ssuuddoo --ll [--AAkknnSS] [--aa _t_y_p_e] [--gg _g_r_o_u_p] [--hh _h_o_s_t] [--pp _p_r_o_m_p_t] [--UU _u_s_e_r]
           [--uu _u_s_e_r] [_c_o_m_m_a_n_d]
      ssuuddoo [--AAbbEEHHnnPPSS] [--aa _t_y_p_e] [--CC _n_u_m] [--cc _c_l_a_s_s] [--gg _g_r_o_u_p] [--hh _h_o_s_t]
-          [--pp _p_r_o_m_p_t] [--rr _r_o_l_e] [--tt _t_y_p_e] [--uu _u_s_e_r] [_V_A_R=_v_a_l_u_e] [--ii | --ss]
-          [_c_o_m_m_a_n_d]
+          [--pp _p_r_o_m_p_t] [--rr _r_o_l_e] [--tt _t_y_p_e] [--TT _t_i_m_e_o_u_t] [--uu _u_s_e_r] [_V_A_R=_v_a_l_u_e]
+          [--ii | --ss] [_c_o_m_m_a_n_d]
      ssuuddooeeddiitt [--AAkknnSS] [--aa _t_y_p_e] [--CC _n_u_m] [--cc _c_l_a_s_s] [--gg _g_r_o_u_p] [--hh _h_o_s_t]
-              [--pp _p_r_o_m_p_t] [--uu _u_s_e_r] _f_i_l_e _._._.
+              [--pp _p_r_o_m_p_t] [--TT _t_i_m_e_o_u_t] [--uu _u_s_e_r] _f_i_l_e _._._.
 
 DDEESSCCRRIIPPTTIIOONN
      ssuuddoo allows a permitted user to execute a _c_o_m_m_a_n_d as the superuser or
@@ -68,7 +68,7 @@ DDEESSCCRRIIPPTTIIOONN
                  Use the specified BSD authentication _t_y_p_e when validating the
                  user, if allowed by _/_e_t_c_/_l_o_g_i_n_._c_o_n_f.  The system
                  administrator may specify a list of sudo-specific
-                 authentication methods by adding an ``auth-sudo'' entry in
+                 authentication methods by adding an "auth-sudo" entry in
                  _/_e_t_c_/_l_o_g_i_n_._c_o_n_f.  This option is only available on systems
                  that support BSD authentication.
 
@@ -107,6 +107,13 @@ DDEESSCCRRIIPPTTIIOONN
                  policy may return an error if the user does not have
                  permission to preserve the environment.
 
+     ----pprreesseerrvvee--eennvv==lliisstt
+                 Indicates to the security policy that the user wishes to add
+                 the comma-separated list of environment variables to those
+                 preserved from the user's environment.  The security policy
+                 may return an error if the user does not have permission to
+                 preserve the environment.
+
      --ee, ----eeddiitt  Edit one or more files instead of running a command.  In lieu
                  of a path name, the string "sudoedit" is used when consulting
                  the security policy.  If the user is authorized by the
@@ -130,17 +137,17 @@ DDEESSCCRRIIPPTTIIOONN
                  following restrictions are enforced unless explicitly allowed
                  by the security policy:
 
-                  ++oo   Symbolic links may not be edited (version 1.8.15 and
-                      higher).
+                  ++oo  Symbolic links may not be edited (version 1.8.15 and
+                     higher).
 
-                  ++oo   Symbolic links along the path to be edited are not
-                      followed when the parent directory is writable by the
-                      invoking user unless that user is root (version 1.8.16
-                      and higher).
+                  ++oo  Symbolic links along the path to be edited are not
+                     followed when the parent directory is writable by the
+                     invoking user unless that user is root (version 1.8.16
+                     and higher).
 
-                  ++oo   Files located in a directory that is writable by the
-                      invoking user may not be edited unless that user is root
-                      (version 1.8.16 and higher).
+                  ++oo  Files located in a directory that is writable by the
+                     invoking user may not be edited unless that user is root
+                     (version 1.8.16 and higher).
 
                  Users are never allowed to edit device special files.
 
@@ -180,16 +187,19 @@ DDEESSCCRRIIPPTTIIOONN
      --ii, ----llooggiinn
                  Run the shell specified by the target user's password
                  database entry as a login shell.  This means that login-
-                 specific resource files such as _._p_r_o_f_i_l_e or _._l_o_g_i_n will be
-                 read by the shell.  If a command is specified, it is passed
-                 to the shell for execution via the shell's --cc option.  If no
-                 command is specified, an interactive shell is executed.  ssuuddoo
-                 attempts to change to that user's home directory before
-                 running the shell.  The command is run with an environment
-                 similar to the one a user would receive at log in.  The
-                 _C_o_m_m_a_n_d _e_n_v_i_r_o_n_m_e_n_t section in the sudoers(4) manual
-                 documents how the --ii option affects the environment in which
-                 a command is run when the _s_u_d_o_e_r_s policy is in use.
+                 specific resource files such as _._p_r_o_f_i_l_e, _._b_a_s_h___p_r_o_f_i_l_e or
+                 _._l_o_g_i_n will be read by the shell.  If a command is specified,
+                 it is passed to the shell for execution via the shell's --cc
+                 option.  If no command is specified, an interactive shell is
+                 executed.  ssuuddoo attempts to change to that user's home
+                 directory before running the shell.  The command is run with
+                 an environment similar to the one a user would receive at log
+                 in.  Note that most shells behave differently when a command
+                 is specified as compared to an interactive session; consult
+                 the shell's manual for details.  The _C_o_m_m_a_n_d _e_n_v_i_r_o_n_m_e_n_t
+                 section in the sudoers(4) manual documents how the --ii option
+                 affects the environment in which a command is run when the
+                 _s_u_d_o_e_r_s policy is in use.
 
      --KK, ----rreemmoovvee--ttiimmeessttaammpp
                  Similar to the --kk option, except that it removes the user's
@@ -221,9 +231,9 @@ DDEESSCCRRIIPPTTIIOONN
 
                  If a _c_o_m_m_a_n_d is specified and is permitted by the security
                  policy, the fully-qualified path to the command is displayed
-                 along with any command line arguments.  If _c_o_m_m_a_n_d is
-                 specified but not allowed, ssuuddoo will exit with a status value
-                 of 1.
+                 along with any command line arguments.  If a _c_o_m_m_a_n_d is
+                 specified but not allowed by the policy, ssuuddoo will exit with
+                 a status value of 1.
 
      --nn, ----nnoonn--iinntteerraaccttiivvee
                  Avoid prompting the user for input of any kind.  If a
@@ -261,9 +271,11 @@ DDEESSCCRRIIPPTTIIOONN
                  %%  two consecutive `%' characters are collapsed into a
                      single `%' character
 
-                 The custom prompt will override the system password prompt on
-                 systems that support PAM unless the _p_a_s_s_p_r_o_m_p_t___o_v_e_r_r_i_d_e flag
-                 is disabled in _s_u_d_o_e_r_s.
+                 The custom prompt will override the default prompt specified
+                 by either the security policy or the SUDO_PROMPT environment
+                 variable.  On systems that use PAM, the custom prompt will
+                 also override the prompt specified by a PAM module unless the
+                 _p_a_s_s_p_r_o_m_p_t___o_v_e_r_r_i_d_e flag is disabled in _s_u_d_o_e_r_s.
 
      --rr _r_o_l_e, ----rroollee=_r_o_l_e
                  Run the command with an SELinux security context that
@@ -280,6 +292,9 @@ DDEESSCCRRIIPPTTIIOONN
                  password database entry.  If a command is specified, it is
                  passed to the shell for execution via the shell's --cc option.
                  If no command is specified, an interactive shell is executed.
+                 Note that most shells behave differently when a command is
+                 specified as compared to an interactive session; consult the
+                 shell's manual for details.
 
      --tt _t_y_p_e, ----ttyyppee=_t_y_p_e
                  Run the command with an SELinux security context that
@@ -292,6 +307,13 @@ DDEESSCCRRIIPPTTIIOONN
                  policy may restrict listing other users' privileges.  The
                  _s_u_d_o_e_r_s policy only allows root or a user with the ALL
                  privilege on the current host to use this option.
+
+     --TT _t_i_m_e_o_u_t, ----ccoommmmaanndd--ttiimmeeoouutt=_t_i_m_e_o_u_t
+                 Used to set a timeout for the command.  If the timeout
+                 expires before the command has exited, the command will be
+                 terminated.  The security policy may restrict the ability to
+                 set command timeouts.  The _s_u_d_o_e_r_s policy requires that user-
+                 specified timeouts be explicitly enabled.
 
      --uu _u_s_e_r, ----uusseerr=_u_s_e_r
                  Run the command as a user other than the default target user
@@ -341,47 +363,58 @@ CCOOMMMMAANNDD EEXXEECCUUTTIIOONN
 
      The following parameters may be specified by security policy:
 
-     ++oo   real and effective user ID
+     ++oo  real and effective user ID
 
-     ++oo   real and effective group ID
+     ++oo  real and effective group ID
 
-     ++oo   supplementary group IDs
+     ++oo  supplementary group IDs
 
-     ++oo   the environment list
+     ++oo  the environment list
 
-     ++oo   current working directory
+     ++oo  current working directory
 
-     ++oo   file creation mode mask (umask)
+     ++oo  file creation mode mask (umask)
 
-     ++oo   SELinux role and type
+     ++oo  SELinux role and type
 
-     ++oo   Solaris project
+     ++oo  Solaris project
 
-     ++oo   Solaris privileges
+     ++oo  Solaris privileges
 
-     ++oo   BSD login class
+     ++oo  BSD login class
 
-     ++oo   scheduling priority (aka nice value)
+     ++oo  scheduling priority (aka nice value)
 
    PPrroocceessss mmooddeell
-     When ssuuddoo runs a command, it calls fork(2), sets up the execution
-     environment as described above, and calls the execve system call in the
-     child process.  The main ssuuddoo process waits until the command has
+     There are two distinct ways ssuuddoo can run a command.
+
+     If an I/O logging plugin is configured or if the security policy
+     explicitly requests it, a new pseudo-terminal ("pty") is allocated and
+     fork(2) is used to create a second ssuuddoo process, referred to as the
+     _m_o_n_i_t_o_r.  The _m_o_n_i_t_o_r creates a new terminal session with itself as the
+     leader and the pty as its controlling terminal, calls fork(2), sets up
+     the execution environment as described above, and then uses the execve(2)
+     system call to run the command in the child process.  The _m_o_n_i_t_o_r exists
+     to relay job control signals between the user's existing terminal and the
+     pty the command is being run in.  This makes it possible to suspend and
+     resume the command.  Without the monitor, the command would be in what
+     POSIX terms an "orphaned process group" and it would not receive any job
+     control signals from the kernel.  When the command exits or is terminated
+     by a signal, the _m_o_n_i_t_o_r passes the command's exit status to the main
+     ssuuddoo process and exits.  After receiving the command's exit status, the
+     main ssuuddoo passes the command's exit status to the security policy's close
+     function and exits.
+
+     If no pty is used, ssuuddoo calls fork(2), sets up the execution environment
+     as described above, and uses the execve(2) system call to run the command
+     in the child process.  The main ssuuddoo process waits until the command has
      completed, then passes the command's exit status to the security policy's
-     close function and exits.  If an I/O logging plugin is configured or if
-     the security policy explicitly requests it, a new  pseudo-terminal
-     (``pty'') is created and a second ssuuddoo process is used to relay job
-     control signals between the user's existing pty and the new pty the
-     command is being run in.  This extra process makes it possible to, for
-     example, suspend and resume the command.  Without it, the command would
-     be in what POSIX terms an ``orphaned process group'' and it would not
-     receive any job control signals.  As a special case, if the policy plugin
-     does not define a close function and no pty is required, ssuuddoo will
-     execute the command directly instead of calling fork(2) first.  The
-     _s_u_d_o_e_r_s policy plugin will only define a close function when I/O logging
-     is enabled, a pty is required, or the _p_a_m___s_e_s_s_i_o_n or _p_a_m___s_e_t_c_r_e_d options
-     are enabled.  Note that _p_a_m___s_e_s_s_i_o_n and _p_a_m___s_e_t_c_r_e_d are enabled by
-     default on systems using PAM.
+     close function and exits.  As a special case, if the policy plugin does
+     not define a close function, ssuuddoo will execute the command directly
+     instead of calling fork(2) first.  The _s_u_d_o_e_r_s policy plugin will only
+     define a close function when I/O logging is enabled, a pty is required,
+     or the _p_a_m___s_e_s_s_i_o_n or _p_a_m___s_e_t_c_r_e_d options are enabled.  Note that
+     _p_a_m___s_e_s_s_i_o_n and _p_a_m___s_e_t_c_r_e_d are enabled by default on systems using PAM.
 
    SSiiggnnaall hhaannddlliinngg
      When the command is run as a child of the ssuuddoo process, ssuuddoo will relay
@@ -419,23 +452,29 @@ CCOOMMMMAANNDD EEXXEECCUUTTIIOONN
      file is present, or it contains no Plugin lines, ssuuddoo will use the
      traditional _s_u_d_o_e_r_s security policy and I/O logging.  See the
      sudo.conf(4) manual for details of the _/_e_t_c_/_s_u_d_o_._c_o_n_f file and the
-     sudo_plugin(1m) manual for more information about the ssuuddoo plugin
+     sudo_plugin(4) manual for more information about the ssuuddoo plugin
      architecture.
 
 EEXXIITT VVAALLUUEE
      Upon successful execution of a command, the exit status from ssuuddoo will be
      the exit status of the program that was executed.  If the command
-     terminated due to receipt of a signal, ssuuddoo will send itself the signal
-     that terminated the command.
+     terminated due to receipt of a signal, ssuuddoo will send itself the same
+     signal that terminated the command.
 
-     Otherwise, ssuuddoo exits with a value of 1 if there is a
-     configuration/permission problem or if ssuuddoo cannot execute the given
-     command.  In the latter case, the error string is printed to the standard
-     error.  If ssuuddoo cannot stat(2) one or more entries in the user's PATH, an
-     error is printed to the standard error.  (If the directory does not exist
-     or if it is not really a directory, the entry is ignored and no error is
+     If the --ll option was specified without a command, ssuuddoo will exit with a
+     value of 0 if the user is allowed to run ssuuddoo and they authenticated
+     successfully (as required by the security policy).  If a command is
+     specified with the --ll option, the exit value will only be 0 if the
+     command is permitted by the security policy, otherwise it will be 1.
+
+     If there is an authentication failure, a configuration/permission problem
+     or if the given command cannot be executed, ssuuddoo exits with a value of 1.
+     In the latter case, the error string is printed to the standard error.
+     If ssuuddoo cannot stat(2) one or more entries in the user's PATH, an error
+     is printed to the standard error.  (If the directory does not exist or if
+     it is not really a directory, the entry is ignored and no error is
      printed.)  This should not happen under normal circumstances.  The most
-     common reason for stat(2) to return ``permission denied'' is if you are
+     common reason for stat(2) to return "permission denied" is if you are
      running an automounter and one of the directories in your PATH is on a
      machine that is currently unreachable.
 
@@ -470,7 +509,7 @@ SSEECCUURRIITTYY NNOOTTEESS
      for the command that is run).  This historical practice dates from a time
      when most operating systems allowed setuid processes to dump core by
      default.  To aid in debugging ssuuddoo crashes, you may wish to re-enable
-     core dumps by setting ``disable_coredump'' to false in the sudo.conf(4)
+     core dumps by setting "disable_coredump" to false in the sudo.conf(4)
      file as follows:
 
            Set disable_coredump false
@@ -515,7 +554,8 @@ EENNVVIIRROONNMMEENNTT
 
      SUDO_GID         Set to the group ID of the user who invoked sudo.
 
-     SUDO_PROMPT      Used as the default password prompt.
+     SUDO_PROMPT      Used as the default password prompt unless the --pp option
+                      was specified.
 
      SUDO_PS1         If set, PS1 will be set to its value for the program
                       being run.
@@ -571,7 +611,7 @@ EEXXAAMMPPLLEESS
 
 SSEEEE AALLSSOO
      su(1), stat(2), login_cap(3), passwd(4), sudo.conf(4), sudoers(4),
-     sudo_plugin(1m), sudoreplay(1m), visudo(1m)
+     sudo_plugin(4), sudoreplay(1m), visudo(1m)
 
 HHIISSTTOORRYY
      See the HISTORY file in the ssuuddoo distribution
@@ -615,10 +655,10 @@ SSUUPPPPOORRTT
      the archives.
 
 DDIISSCCLLAAIIMMEERR
-     ssuuddoo is provided ``AS IS'' and any express or implied warranties,
+     ssuuddoo is provided "AS IS" and any express or implied warranties,
      including, but not limited to, the implied warranties of merchantability
      and fitness for a particular purpose are disclaimed.  See the LICENSE
      file distributed with ssuuddoo or https://www.sudo.ws/license.html for
      complete details.
 
-Sudo 1.8.19                    January 19, 2016                    Sudo 1.8.19
+Sudo 1.8.23                     March 21, 2018                     Sudo 1.8.23

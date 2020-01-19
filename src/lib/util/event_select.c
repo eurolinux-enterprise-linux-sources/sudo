@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2013-2015 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -103,6 +103,7 @@ sudo_ev_add_impl(struct sudo_event_base *base, struct sudo_event *ev)
 	    free(rfds_in);
 	    free(wfds_in);
 	    free(rfds_out);
+	    free(wfds_out);
 	    debug_return_int(-1);
 	}
 

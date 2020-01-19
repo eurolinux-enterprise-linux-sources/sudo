@@ -30,7 +30,7 @@ DDEESSCCRRIIPPTTIIOONN
      Non-comment lines that don't begin with Plugin, Path, Debug, or Set are
      silently ignored.
 
-     The ssuuddoo..ccoonnff file is always parsed in the ``C'' locale.
+     The ssuuddoo..ccoonnff file is always parsed in the "C" locale.
 
    PPlluuggiinn ccoonnffiigguurraattiioonn
      ssuuddoo supports a plugin architecture for security policies and
@@ -81,7 +81,7 @@ DDEESSCCRRIIPPTTIIOONN
            Plugin sudoers_io sudoers.so
 
      For more information on the ssuuddoo plugin architecture, see the
-     sudo_plugin(1m) manual.
+     sudo_plugin(4) manual.
 
    PPaatthh sseettttiinnggss
      A Path line consists of the Path keyword, followed by the name of the
@@ -105,6 +105,20 @@ DDEESSCCRRIIPPTTIIOONN
                write the user's password to the standard output.  The value of
                _a_s_k_p_a_s_s may be overridden by the SUDO_ASKPASS environment
                variable.
+
+     devsearch
+               An ordered, colon-separated search path of directories to look
+               in for device nodes.  This is used when mapping the process's
+               tty device number to a device name on systems that do not
+               provide such a mechanism.  Sudo will _n_o_t recurse into sub-
+               directories.  If terminal devices may be located in a sub-
+               directory of _/_d_e_v, that path must be explicitly listed in
+               _d_e_v_s_e_a_r_c_h.  The default value is:
+               /dev/pts:/dev/vt:/dev/term:/dev/zcons:/dev/pty:/dev
+
+               This option is ignored on systems that support either the
+               ddeevvnnaammee() or __ttttyynnaammee__ddeevv() functions, for example BSD, macOS
+               and Solaris.
 
      noexec    The fully-qualified path to a shared library containing
                wrappers for the eexxeeccll(), eexxeeccllee(), eexxeeccllpp(), eexxeecctt(), eexxeeccvv(),
@@ -131,7 +145,7 @@ DDEESSCCRRIIPPTTIIOONN
                Core dumps of ssuuddoo itself are disabled by default to prevent
                the disclosure of potentially sensitive information.  To aid in
                debugging ssuuddoo crashes, you may wish to re-enable core dumps by
-               setting ``disable_coredump'' to false in ssuuddoo..ccoonnff as follows:
+               setting "disable_coredump" to false in ssuuddoo..ccoonnff as follows:
 
                      Set disable_coredump false
 
@@ -171,20 +185,20 @@ DDEESSCCRRIIPPTTIIOONN
                static    Use the static group list that the kernel returns.
                          Retrieving the group list this way is very fast but
                          it is subject to an upper limit as described above.
-                         It is ``static'' in that it does not reflect changes
-                         to the group database made after the user logs in.
-                         This was the default behavior prior to ssuuddoo 1.8.7.
+                         It is "static" in that it does not reflect changes to
+                         the group database made after the user logs in.  This
+                         was the default behavior prior to ssuuddoo 1.8.7.
 
                dynamic   Always query the group database directly.  It is
-                         ``dynamic'' in that changes made to the group
-                         database after the user logs in will be reflected in
-                         the group list.  On some systems, querying the group
-                         database for all of a user's groups can be time
-                         consuming when querying a network-based group
-                         database.  Most operating systems provide an
-                         efficient method of performing such queries.
-                         Currently, ssuuddoo supports efficient group queries on
-                         AIX, BSD, HP-UX, Linux and Solaris.
+                         "dynamic" in that changes made to the group database
+                         after the user logs in will be reflected in the group
+                         list.  On some systems, querying the group database
+                         for all of a user's groups can be time consuming when
+                         querying a network-based group database.  Most
+                         operating systems provide an efficient method of
+                         performing such queries.  Currently, ssuuddoo supports
+                         efficient group queries on AIX, BSD, HP-UX, Linux and
+                         Solaris.
 
                adaptive  Only query the group database if the static group
                          list returned by the kernel has the maximum number of
@@ -386,7 +400,7 @@ EEXXAAMMPPLLEESS
      #Set group_source static
 
 SSEEEE AALLSSOO
-     sudoers(4), sudo(1m), sudo_plugin(1m)
+     sudoers(4), sudo(1m), sudo_plugin(4)
 
 HHIISSTTOORRYY
      See the HISTORY file in the ssuuddoo distribution
@@ -412,10 +426,10 @@ SSUUPPPPOORRTT
      the archives.
 
 DDIISSCCLLAAIIMMEERR
-     ssuuddoo is provided ``AS IS'' and any express or implied warranties,
+     ssuuddoo is provided "AS IS" and any express or implied warranties,
      including, but not limited to, the implied warranties of merchantability
      and fitness for a particular purpose are disclaimed.  See the LICENSE
      file distributed with ssuuddoo or https://www.sudo.ws/license.html for
      complete details.
 
-Sudo 1.8.19                    October 15, 2016                    Sudo 1.8.19
+Sudo 1.8.23                      July 21, 2017                     Sudo 1.8.23

@@ -1,6 +1,6 @@
 .\"
-.\" Copyright (c) 1994-1996, 1998-2005, 2007-2016
-.\"	Todd C. Miller <Todd.Miller@courtesan.com>
+.\" Copyright (c) 1994-1996, 1998-2005, 2007-2018
+.\"	Todd C. Miller <Todd.Miller@sudo.ws>
 .\"
 .\" Permission to use, copy, modify, and distribute this software for any
 .\" purpose with or without fee is hereby granted, provided that the above
@@ -19,7 +19,7 @@
 .\" Agency (DARPA) and Air Force Research Laboratory, Air Force
 .\" Materiel Command, USAF, under agreement number F39502-99-1-0512.
 .\"
-.Dd January 19, 2016
+.Dd March 21, 2018
 .Dt SUDO @mansectsu@
 .Os Sudo @PACKAGE_VERSION@
 .Sh NAME
@@ -57,6 +57,7 @@
 .Op Fl p Ar prompt
 .Op Fl r Ar role
 .Op Fl t Ar type
+.Op Fl T Ar timeout
 .Op Fl u Ar user
 .Op Ar VAR Ns = Ns Ar value
 .Op Fl i | s
@@ -69,6 +70,7 @@
 .Op Fl g Ar group
 .Op Fl h Ar host
 .Op Fl p Ar prompt
+.Op Fl T Ar timeout
 .Op Fl u Ar user
 .Ar
 .Sh DESCRIPTION
@@ -234,6 +236,12 @@ Indicates to the security policy that the user wishes to
 preserve their existing environment variables.
 The security policy may return an error if the user does not have
 permission to preserve the environment.
+.It Fl -preserve-env=list
+Indicates to the security policy that the user wishes to add the
+comma-separated list of environment variables to those preserved
+from the user's environment.
+The security policy may return an error if the user does not have
+permission to preserve the environment.
 .It Fl e , -edit
 Edit one or more files instead of running a command.
 In lieu of a path name, the string "sudoedit" is used when consulting
@@ -271,7 +279,7 @@ their original location and the temporary versions are removed.
 .Pp
 To help prevent the editing of unauthorized files, the following
 restrictions are enforced unless explicitly allowed by the security policy:
-.Bl -bullet -offset 4
+.Bl -bullet -offset 4 -width 1n
 .It
 Symbolic links may not be edited (version 1.8.15 and higher).
 .It
@@ -339,7 +347,8 @@ option to list a user's privileges for the remote host.
 Run the shell specified by the target user's password database entry
 as a login shell.
 This means that login-specific resource files such as
-.Pa .profile
+.Pa .profile ,
+.Pa .bash_profile
 or
 .Pa .login
 will be read by the shell.
@@ -353,6 +362,9 @@ attempts to change to that user's home directory before running the
 shell.
 The command is run with an environment similar to the one
 a user would receive at log in.
+Note that most shells behave differently when a command is specified
+as compared to an interactive session; consult the shell's manual
+for details.
 The
 .Em Command environment
 section in the
@@ -407,9 +419,9 @@ If a
 is specified and is permitted by the security policy, the fully-qualified
 path to the command is displayed along with any command line
 arguments.
-If
+If a
 .Ar command
-is specified but not allowed,
+is specified but not allowed by the policy,
 .Nm
 will exit with a status value of 1.
 .It Fl n , -non-interactive
@@ -465,8 +477,12 @@ characters are collapsed into a single
 character
 .El
 .Pp
-The custom prompt will override the system password prompt on systems that
-support PAM unless the
+The custom prompt will override the default prompt specified by either
+the security policy or the
+.Ev SUDO_PROMPT
+environment variable.
+On systems that use PAM, the custom prompt will also override the prompt
+specified by a PAM module unless the
 .Em passprompt_override
 flag is disabled in
 .Em sudoers .
@@ -488,6 +504,9 @@ via the shell's
 .Fl c
 option.
 If no command is specified, an interactive shell is executed.
+Note that most shells behave differently when a command is specified
+as compared to an interactive session; consult the shell's manual
+for details.
 .It Fl t Ar type , Fl -type Ns = Ns Ar type
 Run the command with an SELinux security context that includes
 the specified
@@ -507,6 +526,14 @@ The
 policy only allows root or a user with the
 .Li ALL
 privilege on the current host to use this option.
+.It Fl T Ar timeout , Fl -command-timeout Ns = Ns Ar timeout
+Used to set a timeout for the command.
+If the timeout expires before the command has exited, the
+command will be terminated.
+The security policy may restrict the ability to set command timeouts.
+The
+.Em sudoers
+policy requires that user-specified timeouts be explicitly enabled.
 .It Fl u Ar user , Fl -user Ns = Ns Ar user
 Run the command as a user other than the default target user
 (usually
@@ -599,7 +626,7 @@ and the group vector is initialized based on the group database
 option was specified).
 .Pp
 The following parameters may be specified by security policy:
-.Bl -bullet
+.Bl -bullet -width 1n
 .It
 real and effective user ID
 .It
@@ -624,31 +651,58 @@ BSD login class
 scheduling priority (aka nice value)
 .El
 .Ss Process model
-When
+There are two distinct ways
 .Nm
-runs a command, it calls
+can run a command.
+.Pp
+If an I/O logging plugin is configured or if the security policy
+explicitly requests it, a new pseudo-terminal
+.Pq Dq pty
+is allocated and
+.Xr fork 2
+is used to create a second
+.Nm
+process, referred to as the
+.Em monitor .
+The
+.Em monitor
+creates a new terminal session with itself as the leader and the pty as its
+controlling terminal, calls
 .Xr fork 2 ,
-sets up the execution environment as described above, and calls the
-.Xr execve
-system call in the child process.
+sets up the execution environment as described above, and then uses the
+.Xr execve 2
+system call to run the command in the child process.
+The
+.Em monitor
+exists to relay job control signals between the user's
+existing terminal and the pty the command is being run in.
+This makes it possible to suspend and resume the command.
+Without the monitor, the command would be in what POSIX terms an
+.Dq orphaned process group
+and it would not receive any job control signals from the kernel.
+When the command exits or is terminated by a signal, the
+.Em monitor
+passes the command's exit status to the main
+.Nm
+process and exits.
+After receiving the command's exit status, the main
+.Nm
+passes the command's exit status to the security policy's close function
+and exits.
+.Pp
+If no pty is used,
+.Nm
+calls
+.Xr fork 2 ,
+sets up the execution environment as described above, and uses the
+.Xr execve 2
+system call to run the command in the child process.
 The main
 .Nm
 process waits until the command has completed, then passes the
 command's exit status to the security policy's close function and exits.
-If an I/O logging plugin is configured or if the security policy
-explicitly requests it, a new  pseudo-terminal
-.Pq Dq pty
-is created and a second
-.Nm
-process is used to relay job control signals between the user's
-existing pty and the new pty the command is being run in.
-This extra process makes it possible to, for example, suspend
-and resume the command.
-Without it, the command would be in what POSIX terms an
-.Dq orphaned process group
-and it would not receive any job control signals.
 As a special case, if the policy plugin does not define a close
-function and no pty is required,
+function,
 .Nm
 will execute the command directly instead of calling
 .Xr fork 2
@@ -761,7 +815,7 @@ See the
 manual for details of the
 .Pa @sysconfdir@/sudo.conf
 file and the
-.Xr sudo_plugin @mansectsu@
+.Xr sudo_plugin @mansectform@
 manual for more information about the
 .Nm
 plugin architecture.
@@ -771,14 +825,24 @@ Upon successful execution of a command, the exit status from
 will be the exit status of the program that was executed.
 If the command terminated due to receipt of a signal,
 .Nm
-will send itself the signal that terminated the command.
+will send itself the same signal that terminated the command.
 .Pp
-Otherwise,
+If the
+.Fl l
+option was specified without a command,
 .Nm
-exits with a value of 1 if there is a configuration/permission
-problem or if
+will exit with a value of 0 if the user is allowed to run
 .Nm
-cannot execute the given command.
+and they authenticated successfully (as required by the security policy).
+If a command is specified with the
+.Fl l
+option, the exit value will only be 0 if the command is permitted by the
+security policy, otherwise it will be 1.
+.Pp
+If there is an authentication failure, a configuration/permission
+problem or if the given command cannot be executed,
+.Nm
+exits with a value of 1.
 In the latter case, the error string is printed to the standard error.
 If
 .Nm
@@ -955,7 +1019,10 @@ Default editor to use in
 .It Ev SUDO_GID
 Set to the group ID of the user who invoked sudo.
 .It Ev SUDO_PROMPT
-Used as the default password prompt.
+Used as the default password prompt unless
+the
+.Fl p
+option was specified.
 .It Ev SUDO_PS1
 If set,
 .Ev PS1
@@ -1036,7 +1103,7 @@ $ sudo sh -c "cd /home ; du -s * | sort -rn > USAGE"
 .Xr passwd @mansectform@ ,
 .Xr sudo.conf @mansectform@ ,
 .Xr sudoers @mansectform@ ,
-.Xr sudo_plugin @mansectsu@ ,
+.Xr sudo_plugin @mansectform@ ,
 .Xr sudoreplay @mansectsu@ ,
 .Xr visudo @mansectsu@
 .Sh HISTORY

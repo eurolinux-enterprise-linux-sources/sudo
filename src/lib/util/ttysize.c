@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2012, 2014-2015 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2010-2012, 2014-2015 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -23,22 +23,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <termios.h>
+#include <termios.h>		/* for struct winsize on HP-UX */
 #include <limits.h>
 
 #include "sudo_compat.h"
 #include "sudo_debug.h"
 #include "sudo_util.h"
 
-/* Compatibility with older tty systems. */
-#if !defined(TIOCGWINSZ) && defined(TIOCGSIZE)
-# define TIOCGWINSZ	TIOCGSIZE
-# define winsize	ttysize
-# define ws_col		ts_cols
-# define ws_row		ts_lines
-#endif
-
-#ifdef TIOCGWINSZ
 static int
 get_ttysize_ioctl(int *rowp, int *colp)
 {
@@ -53,13 +44,6 @@ get_ttysize_ioctl(int *rowp, int *colp)
     }
     debug_return_int(-1);
 }
-#else
-static int
-get_ttysize_ioctl(int *rowp, int *colp)
-{
-    return -1;
-}
-#endif /* TIOCGWINSZ */
 
 void
 sudo_get_ttysize_v1(int *rowp, int *colp)

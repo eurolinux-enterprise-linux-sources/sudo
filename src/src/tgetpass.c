@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1996, 1998-2005, 2007-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -84,8 +84,8 @@ char *
 tgetpass(const char *prompt, int timeout, int flags,
     struct sudo_conv_callback *callback)
 {
-    sigaction_t sa, savealrm, saveint, savehup, savequit, saveterm;
-    sigaction_t savetstp, savettin, savettou;
+    struct sigaction sa, savealrm, saveint, savehup, savequit, saveterm;
+    struct sigaction savetstp, savettin, savettou;
     char *pass;
     static const char *askpass;
     static char buf[SUDO_CONV_REPL_MAX + 1];
@@ -157,7 +157,7 @@ restart:
      */
     memset(&sa, 0, sizeof(sa));
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_INTERRUPT;	/* don't restart system calls */
+    sa.sa_flags = 0;	/* don't restart system calls */
     sa.sa_handler = tgetpass_handler;
     (void) sigaction(SIGALRM, &sa, &savealrm);
     (void) sigaction(SIGINT, &sa, &saveint);
@@ -238,9 +238,17 @@ static char *
 sudo_askpass(const char *askpass, const char *prompt)
 {
     static char buf[SUDO_CONV_REPL_MAX + 1], *pass;
+    struct sigaction sa, savechld;
     int pfd[2], status;
     pid_t child;
     debug_decl(sudo_askpass, SUDO_DEBUG_CONV)
+
+    /* Set SIGCHLD handler to default since we call waitpid() below. */
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = SIG_DFL;
+    (void) sigaction(SIGCHLD, &sa, &savechld);
 
     if (pipe(pfd) == -1)
 	sudo_fatal(U_("unable to create pipe"));
@@ -287,6 +295,9 @@ sudo_askpass(const char *askpass, const char *prompt)
 
     if (pass == NULL)
 	errno = EINTR;	/* make cancel button simulate ^C */
+
+    /* Restore saved SIGCHLD handler. */
+    (void) sigaction(SIGCHLD, &savechld, NULL);
 
     debug_return_str_masked(pass);
 }
@@ -356,7 +367,7 @@ tgetpass_handler(int s)
 static bool
 tty_present(void)
 {
-#if defined(HAVE_STRUCT_KINFO_PROC2_P_TDEV) || defined(HAVE_STRUCT_KINFO_PROC_P_TDEV) || defined(HAVE_STRUCT_KINFO_PROC_KI_TDEV) || defined(HAVE_STRUCT_KINFO_PROC_KP_EPROC_E_TDEV) || defined(HAVE_STRUCT_PSINFO_PR_TTYDEV) || defined(HAVE_PSTAT_GETPROC) || defined(__linux__)
+#if defined(HAVE_KINFO_PROC2_NETBSD) || defined(HAVE_KINFO_PROC_OPENBSD) || defined(HAVE_KINFO_PROC_FREEBSD) || defined(HAVE_KINFO_PROC_44BSD) || defined(HAVE_STRUCT_PSINFO_PR_TTYDEV) || defined(HAVE_PSTAT_GETPROC) || defined(__linux__)
     debug_decl(tty_present, SUDO_DEBUG_UTIL)
     debug_return_bool(user_details.tty != NULL);
 #else

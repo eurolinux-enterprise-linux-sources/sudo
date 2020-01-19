@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2011-2014 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -59,6 +59,7 @@ __dso_public const char *sudo_conf_askpass_path_v1(void);
 __dso_public const char *sudo_conf_sesh_path_v1(void);
 __dso_public const char *sudo_conf_noexec_path_v1(void);
 __dso_public const char *sudo_conf_plugin_dir_path_v1(void);
+__dso_public const char *sudo_conf_devsearch_path_v1(void);
 __dso_public struct sudo_conf_debug_list *sudo_conf_debugging_v1(void);
 __dso_public struct sudo_conf_debug_file_list *sudo_conf_debug_files_v1(const char *progname);
 __dso_public struct plugin_info_list *sudo_conf_plugins_v1(void);
@@ -71,6 +72,7 @@ __dso_public void sudo_conf_clear_paths_v1(void);
 #define sudo_conf_sesh_path() sudo_conf_sesh_path_v1()
 #define sudo_conf_noexec_path() sudo_conf_noexec_path_v1()
 #define sudo_conf_plugin_dir_path() sudo_conf_plugin_dir_path_v1()
+#define sudo_conf_devsearch_path() sudo_conf_devsearch_path_v1()
 #define sudo_conf_debugging() sudo_conf_debugging_v1()
 #define sudo_conf_debug_files(_a) sudo_conf_debug_files_v1((_a))
 #define sudo_conf_plugins() sudo_conf_plugins_v1()

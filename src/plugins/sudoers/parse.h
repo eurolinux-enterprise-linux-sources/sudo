@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1996, 1998-2000, 2004, 2007-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,6 +17,9 @@
 
 #ifndef SUDOERS_PARSE_H
 #define SUDOERS_PARSE_H
+
+/* Characters that must be quoted in sudoers */
+#define SUDOERS_QUOTED  ":\\,=#\""
 
 #undef UNSPEC
 #define UNSPEC	-1
@@ -110,22 +113,18 @@ struct cmndtag {
 };
 
 /*
- * SELinux-specific container struct.
- * Currently just contains a role and type.
+ * Per-command option container struct.
  */
-struct selinux_info {
-    char *role;
-    char *type;
-};
-
-/*
- * Solaris privileges container struct
- * Currently just contains permitted and limit privileges.
- * It could have PFEXEC and PRIV_AWARE flags added in the future.
- */
-struct solaris_privs_info {
-    char *privs;
-    char *limitprivs;
+struct command_options {
+    time_t notbefore;			/* time restriction */
+    time_t notafter;			/* time restriction */
+    int timeout;			/* command timeout */
+#ifdef HAVE_SELINUX
+    char *role, *type;			/* SELinux role and type */
+#endif
+#ifdef HAVE_PRIV_SET
+    char *privs, *limitprivs;		/* Solaris privilege sets */
+#endif
 };
 
 /*
@@ -151,6 +150,7 @@ TAILQ_HEAD(userspec_list, userspec);
 TAILQ_HEAD(member_list, member);
 TAILQ_HEAD(privilege_list, privilege);
 TAILQ_HEAD(cmndspec_list, cmndspec);
+STAILQ_HEAD(comment_list, sudoers_comment);
 
 /*
  * Structure describing a user specification and list thereof.
@@ -159,6 +159,7 @@ struct userspec {
     TAILQ_ENTRY(userspec) entries;
     struct member_list users;		/* list of users */
     struct privilege_list privileges;	/* list of privileges */
+    struct comment_list comments;	/* optional comments */
     int lineno;
     char *file;
 };
@@ -168,12 +169,15 @@ struct userspec {
  */
 struct privilege {
     TAILQ_ENTRY(privilege) entries;
+    char *ldap_role;			/* LDAP sudoRole */
     struct member_list hostlist;	/* list of hosts */
     struct cmndspec_list cmndlist;	/* list of Cmnd_Specs */
+    struct defaults_list defaults;	/* list of sudoOptions */
 };
 
 /*
  * Structure describing a linked list of Cmnd_Specs.
+ * XXX - include struct command_options instad of its contents inline
  */
 struct cmndspec {
     TAILQ_ENTRY(cmndspec) entries;
@@ -181,6 +185,9 @@ struct cmndspec {
     struct member_list *runasgrouplist;	/* list of runas groups */
     struct member *cmnd;		/* command to allow/deny */
     struct cmndtag tags;		/* tag specificaion */
+    int timeout;			/* command timeout */
+    time_t notbefore;			/* time restriction */
+    time_t notafter;			/* time restriction */
 #ifdef HAVE_SELINUX
     char *role, *type;			/* SELinux role and type */
 #endif
@@ -202,6 +209,11 @@ struct member {
 struct runascontainer {
     struct member *runasusers;
     struct member *runasgroups;
+};
+
+struct sudoers_comment {
+    STAILQ_ENTRY(sudoers_comment) entries;
+    char *str;
 };
 
 /*
@@ -240,10 +252,13 @@ extern struct defaults_list defaults;
 
 /* alias.c */
 bool no_aliases(void);
+struct rbtree *replace_aliases(struct rbtree *new_aliases);
 const char *alias_add(char *name, int type, char *file, int lineno, struct member *members);
+const char *alias_type_to_string(int alias_type);
 int alias_compare(const void *a1, const void *a2);
-struct alias *alias_get(char *name, int type);
+struct alias *alias_get(const char *name, int type);
 struct alias *alias_remove(char *name, int type);
+bool alias_find_used(struct rbtree *used_aliases);
 void alias_apply(int (*func)(void *, void *), void *cookie);
 void alias_free(void *a);
 void alias_put(struct alias *a);
@@ -251,12 +266,18 @@ bool init_aliases(void);
 
 /* gram.c */
 bool init_parser(const char *path, bool quiet);
+void free_member(struct member *m);
 void free_members(struct member_list *members);
+void free_privilege(struct privilege *priv);
+void free_userspec(struct userspec *us);
+void free_default(struct defaults *def, struct member_list **binding);
 
 /* match_addr.c */
 bool addr_matches(char *n);
 
 /* match.c */
+struct group;
+struct passwd;
 bool command_matches(const char *sudoers_cmnd, const char *sudoers_args, const struct sudo_digest *digest);
 bool group_matches(const char *sudoers_group, const struct group *gr);
 bool hostname_matches(const char *shost, const char *lhost, const char *pattern);
@@ -265,8 +286,10 @@ bool usergr_matches(const char *group, const char *user, const struct passwd *pw
 bool userpw_matches(const char *sudoers_user, const char *user, const struct passwd *pw);
 int cmnd_matches(const struct member *m);
 int cmndlist_matches(const struct member_list *list);
+int host_matches(const struct passwd *pw, const char *host, const char *shost, const struct member *m);
 int hostlist_matches(const struct passwd *pw, const struct member_list *list);
 int runaslist_matches(const struct member_list *user_list, const struct member_list *group_list, struct member **matching_user, struct member **matching_group);
+int user_matches(const struct passwd *pw, const struct member *m);
 int userlist_matches(const struct passwd *pw, const struct member_list *list);
 const char *sudo_getdomainname(void);
 
@@ -278,5 +301,33 @@ int hexchar(const char *s);
 
 /* base64.c */
 size_t base64_decode(const char *str, unsigned char *dst, size_t dsize);
+
+/* timeout.c */
+int parse_timeout(const char *timestr);
+
+/* gmtoff.c */
+long get_gmtoff(time_t *clock);
+
+/* gentime.c */
+time_t parse_gentime(const char *expstr);
+
+/* filedigest.c */
+unsigned char *sudo_filedigest(int fd, const char *file, int digest_type, size_t *digest_len);
+
+/* digestname.c */
+const char *digest_type_to_name(int digest_type);
+
+/* parse.c */
+struct sudo_lbuf;
+int sudo_display_userspecs(struct userspec_list *usl, struct passwd *pw, struct sudo_lbuf *lbuf);
+
+/* fmtsudoers.c */
+bool sudoers_format_cmndspec(struct sudo_lbuf *lbuf, struct cmndspec *cs, struct cmndspec *prev_cs, bool expand_aliases);
+bool sudoers_format_default(struct sudo_lbuf *lbuf, struct defaults *d);
+bool sudoers_format_default_line(struct sudo_lbuf *lbuf, struct defaults *d, struct defaults **next, bool expand_aliases);
+bool sudoers_format_member(struct sudo_lbuf *lbuf, struct member *m, const char *separator, int alias_type);
+bool sudoers_format_privilege(struct sudo_lbuf *lbuf, struct privilege *priv, bool expand_aliases);
+bool sudoers_format_userspec(struct sudo_lbuf *lbuf, struct userspec *us, bool expand_aliases);
+bool sudoers_format_userspecs(struct sudo_lbuf *lbuf, struct userspec_list *usl, const char *separator, bool expand_aliases, bool flush);
 
 #endif /* SUDOERS_PARSE_H */

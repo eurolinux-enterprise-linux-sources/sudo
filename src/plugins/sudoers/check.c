@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 1993-1996,1998-2005, 2007-2016
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 1993-1996,1998-2005, 2007-2018
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,7 +22,6 @@
 #include <config.h>
 
 #include <sys/types.h>
-#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_STRING_H
@@ -32,9 +31,7 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <unistd.h>
-#ifdef TIME_WITH_SYS_TIME
-# include <time.h>
-#endif
+#include <time.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>
@@ -127,6 +124,8 @@ check_user_interactive(int validated, int mode, struct passwd *auth_pw)
 	    ret = true;
 	    break;
 	}
+	sudo_debug_printf(SUDO_DEBUG_INFO,
+	    "%s: check user flag overrides time stamp", __func__);
 	/* FALLTHROUGH */
 
     default:
@@ -192,6 +191,9 @@ check_user(int validated, int mode)
      * If the user is not changing uid/gid, no need for a password.
      */
     if (!def_authenticate || user_is_exempt()) {
+	sudo_debug_printf(SUDO_DEBUG_INFO, "%s: %s", __func__,
+	    !def_authenticate ? "authentication disabled" :
+	    "user exempt from authentication");
 	ret = true;
 	goto done;
     }
@@ -204,6 +206,8 @@ check_user(int validated, int mode)
 	if (runas_privs == NULL && runas_limitprivs == NULL)
 #endif
 	{
+	    sudo_debug_printf(SUDO_DEBUG_INFO,
+		"%s: user running command as self", __func__);
 	    ret = true;
 	    goto done;
 	}
@@ -212,6 +216,10 @@ check_user(int validated, int mode)
     ret = check_user_interactive(validated, mode, auth_pw);
 
 done:
+    if (ret == true) {
+	/* The approval function may disallow a user post-authentication. */
+	ret = sudo_auth_approval(auth_pw, validated);
+    }
     sudo_auth_cleanup(auth_pw);
     sudo_pw_delref(auth_pw);
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2004-2005, 2007, 2010, 2012-2015
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -32,6 +32,7 @@
 #endif
 
 #include "sudo_compat.h"
+#include "pathnames.h"
 
 #ifndef _POSIX_OPEN_MAX
 # define _POSIX_OPEN_MAX	20
@@ -103,7 +104,7 @@ sudo_closefrom(int lowfd)
 
     /* Use /proc/self/fd (or /dev/fd on FreeBSD) if it exists. */
 # if defined(__FreeBSD__) || defined(__APPLE__)
-    path = "/dev/fd";
+    path = _PATH_DEV "fd";
 # else
     path = "/proc/self/fd";
 # endif

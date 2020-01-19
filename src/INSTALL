@@ -126,34 +126,35 @@ Directory and file names:
 	Install sudo example files in DIR [DATAROOTDIR/doc/sudo/examples]
 
   --with-plugindir=DIR
-	Set the directory that sudo looks in to find the policy and I/O
+	The directory that sudo looks in to find the policy and I/O
 	logging plugins.  Defaults to the LIBEXEC/sudo.
 
   --with-rundir=DIR
-        Set the directory to be used for sudo-specific files that
-        do not survive a system reboot.  This is typically where
-        the time stamp directory is located.  By default, configure
-        will use the first existing directory in the following list:
-	    /var/run, /var/db, /var/lib, /var/adm, /usr/adm
+        The directory to be used for sudo-specific files that do
+        not survive a system reboot.  This is typically where the
+        time stamp directory is located.  By default, configure
+        will choose from the following list:
+	    /run/sudo /var/run/sudo, /var/db/sudo, /var/lib/sudo,
+	    /var/adm/sudo, /usr/adm/sudo
 	This directory should be cleared when the system reboots.
-	On systems that lack /var/run, the default rundir and vardir
-	may be the same.  In this case, only the ts directory inside
-	the rundir needs to be cleared at boot time.
+	On systems that lack /run or /var/run, the default rundir and
+	vardir may be the same.  In this case, only the ts directory
+	inside the rundir needs to be cleared at boot time.
 
   --with-vardir=DIR
-        Set the directory to be used for sudo-specific files that
-        survive a system reboot.  This is typically where the lecture
-        status directory is stored.  By default, configure will use
-        the first existing directory in the following list:
-	    /var/db, /var/lib, /var/adm, /usr/adm
-	This directory should not be cleared when the system boots.
+        The directory to be used for sudo-specific files that survive
+        a system reboot.  This is typically where the lecture status
+        directory is stored.  By default, configure will choose
+        from the following list:
+	    /var/db/sudo, /var/lib/sudo, /var/adm/sudo, /usr/adm/sudo
+	This directory should *not* be cleared when the system boots.
 
   --with-tzdir=DIR
-        Set the directory to the system's time zone data files.  This 
-	is only used when sanitizing the TZ environment variable to
-	allow for fully-qualified paths in TZ.
-        By default, configure will look for an existing "zoneinfo"
-	directory in the following locations:
+        The directory to the system's time zone data files.  This
+        is only used when sanitizing the TZ environment variable
+        to allow for fully-qualified paths in TZ.  By default,
+        configure will look for an existing "zoneinfo" directory
+        in the following locations:
 	    /usr/share /usr/share/lib /usr/lib /etc
 	If no zoneinfo directory is found, the TZ variable may not
 	contain a fully-qualified path.
@@ -172,6 +173,11 @@ Compilation options:
 	undefined by the C standard.  For more information see
         https://github.com/google/sanitizers/wiki/AddressSanitizer
 	The following compiler flag is used: -fsanitize=address,undefined
+
+        This option should only be used for testing and not in a
+        production environment.  Due to AddressSanitizer's unchecked
+        use of environment variables, it is trivial to exploit a
+        setuid root executable such as sudo.
 
   --enable-pie
         Build sudo and related programs as as a position independent
@@ -307,6 +313,12 @@ Optional features:
 	this file instead of /etc/ldap.secret to read the secret password
 	when rootbinddn is specified in the ldap config file.
 
+  --disable-sasl
+        Disable SASL authentication for LDAP.  By default, sudo
+        will compile in support for SASL authentication if the
+        ldap_sasl_interactive_bind_s() function is present in the
+        LDAP libraries.
+
   --with-logincap
 	This adds support for login classes specified in /etc/login.conf.
 	It is enabled by default on BSD/OS, Darwin, FreeBSD, OpenBSD and
@@ -327,7 +339,7 @@ Optional features:
 	another program (think shell escapes).  Please see the
 	"PREVENTING SHELL ESCAPES" section in the sudoers man page
 	for details.  If specified, PATH should be a fully qualified
-	path name, e.g. /usr/local/libexec/sudo_noexec.so.  If PATH
+	path name, e.g. /usr/local/libexec/sudo/sudo_noexec.so.  If PATH
 	is "no", noexec support will not be compiled in.  The default
 	is to compile noexec support if libtool supports building
 	shared objects on your OS.
@@ -349,6 +361,10 @@ Optional features:
         Specify the path to the SSSD shared library, which is loaded
         at run-time.
 
+  --enable-offensive-insults
+        Enable potentially offensive sudo insults from the classic
+        version of sudo.
+
 Operating system-specific options:
   --disable-setreuid
         Disable use of the setreuid() function for operating systems
@@ -362,6 +378,12 @@ Operating system-specific options:
   --enable-admin-flag
 	Enable the creation of an Ubuntu-style admin flag file
 	the first time sudo is run.
+
+  --enable-devsearch=PATH
+        Set a system-specific search path of directories to look in
+        for device nodes.  Sudo uses this when mapping the process's
+	tty device number to a device name.  The default value is:
+            /dev/pts:/dev/vt:/dev/term:/dev/zcons:/dev/pty:/dev
 
   --with-bsm-audit
         Enable support for sudo BSM audit logs on systems that support it.
@@ -515,6 +537,18 @@ Authentication options:
         gss_krb5_ccache_name() provides a better API to do this it
         is not supported by all Kerberos V and SASL combinations.
 
+  --enable-gcrypt[=DIR]
+        Use GNU crypt's SHA-2 message digest functions instead of the
+        ones bundled with sudo (or in the system's C library).
+        If specified, DIR should contain include and lib directories
+        with gcrypt.h and libgcrypt respectively.
+
+  --enable-openssl[=DIR]
+        Use OpenSSL's SHA-2 message digest functions instead of the
+        ones bundled with sudo (or in the system's C library).
+        If specified, DIR should contain include and lib directories
+        with openssl/sha.h and libcrypto respectively.
+
 Development options:
   --enable-env-debug
         Enable debugging of the environment setting functions.  This
@@ -585,6 +619,13 @@ Options that set runtime-changeable default values:
 	unless the "-u" option is used).  This option effectively makes the
 	"-s" flag imply "-H".
 	Sudoers option: set_home
+
+  --enable-timestamp-type=TYPE
+        Set the default time stamp record type.  The TYPE may be "global"
+	(a single record per user), "ppid" (a single record for process
+	with the same parent process), or "tty" (a separate record for
+	each login session).  The default is "tty".
+	Sudoers option: timestamp_type
 
   --with-all-insults
 	Include all the insult sets listed below.  You must either specify
@@ -663,6 +704,11 @@ Options that set runtime-changeable default values:
 	supported: alert, crit, debug, emerg, err, info, notice,
 	and warning.
 	Sudoers option: syslog_goodpri
+
+  --with-python-insults
+	Insults the user with lines from "Monty Python's Flying Circus" when an
+	incorrect password is entered. You must either specify --with-insults or
+	enable insults in the sudoers file for this to have any effect.
 
   --with-goons-insults
 	Insults the user with lines from the "Goon Show" when an incorrect
@@ -780,9 +826,6 @@ Options that set runtime-changeable default values:
 	the failure and exits.  The default is 3.
 	Sudoers option: passwd_tries
 
-  --with-pc-insults
-	Replace politically incorrect insults with less objectionable ones.
-
   --with-runas-default=USER
 	The default user to run commands as if the -u flag is not specified
 	on the command line.  This defaults to "root".
@@ -829,12 +872,6 @@ Options that set runtime-changeable default values:
 	Number of minutes that can elapse before sudo will ask for a passwd
 	again.  The default is 5, set this to 0 to always prompt for a password.
 	Sudoers option: timestamp_timeout
-
-  --with-tty-tickets=no, --without-tty-tickets
-	By default, sudo uses a different ticket file for each user/tty combo.
-	With this option disabled, a single ticket will be used for all
-	of a user's login sessions.
-	Sudoers option: tty_tickets
 
   --with-umask=MASK
 	Umask to use when running the root command.  The default is 0022.

@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
-Version: 1.8.19p2
-Release: 14%{?dist}
+Version: 1.8.23
+Release: 3%{?dist}
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -9,74 +9,48 @@ Source0: http://www.courtesan.com/sudo/dist/sudo-%{version}.tar.gz
 Source1: sudoers
 Source2: sudo-ldap.conf
 Source3: sudo.conf
-Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-Requires: /etc/pam.d/system-auth, vim-minimal, libgcrypt
+Requires: /etc/pam.d/system-auth
+Requires: /usr/bin/vi
 
-BuildRequires: pam-devel
-BuildRequires: groff
-BuildRequires: openldap-devel
-BuildRequires: flex
+BuildRequires: /usr/sbin/sendmail
+BuildRequires: autoconf
+BuildRequires: automake
 BuildRequires: bison
-BuildRequires: automake autoconf libtool
-BuildRequires: audit-libs-devel libcap-devel
+BuildRequires: flex
+BuildRequires: gettext
+BuildRequires: groff
+BuildRequires: libtool
+BuildRequires: audit-libs-devel
+BuildRequires: libcap-devel
+BuildRequires: libgcrypt-devel
 BuildRequires: libgcrypt-devel
 BuildRequires: libselinux-devel
-BuildRequires: /usr/sbin/sendmail
-BuildRequires: gettext
+BuildRequires: openldap-devel
+BuildRequires: pam-devel
 BuildRequires: zlib-devel
-BuildRequires: libgcrypt-devel
 
 # don't strip
 Patch1: sudo-1.6.7p5-strip.patch
 # configure.in fix
 Patch2: sudo-1.7.2p1-envdebug.patch
+# 881258 - rpmdiff: added missing sudo-ldap.conf manpage
+Patch3: sudo-1.8.23-sudoldapconfman.patch
+# 1247591 - Sudo taking a long time when user information is stored externally.
+Patch4: sudo-1.8.23-legacy-group-processing.patch
+# 1135539 - sudo with ldap doesn't work with 'user id' in sudoUser option
+Patch5: sudo-1.8.23-ldapsearchuidfix.patch
+# 1312486 - RHEL7 sudo logs username "root" instead of realuser in /var/log/secure
+Patch6: sudo-1.8.6p7-logsudouser.patch
 # 840980 - sudo creates a new parent process
 # Adds cmnd_no_wait Defaults option
-Patch3: sudo-1.8.6p3-nowaitopt.patch
-# 881258 - rpmdiff: added missing sudo-ldap.conf manpage
-Patch4: sudo-1.8.6p7-sudoldapconfman.patch
-# 1092499 - Regression in sudo 1.8.6p3-7 package, double quotes are not accepted in sudoers
-Patch5: sudo-1.8.6p3-doublequotefix.patch
-# 1183818 - backport of command digest specification feature
-Patch6: sudo-1.8.6p7-digest-backport.patch
-# 1135539 - sudo with ldap doesn't work with 'user id' in sudoUser option
-Patch7: sudo-1.8.6p7-ldapsearchuidfix.patch
-# 1312486 - RHEL7 sudo logs username "root" instead of realuser in /var/log/secure
-Patch8: sudo-1.8.6p7-logsudouser.patch
-# fix upstream testsuite - disabling 2 tests, working only with non-root user
-Patch9: sudo-1.8.18-testsuitefix.patch
-# 1413160 - backport ignore_unknown_defaults flag
-Patch10: sudo-1.8.19p2-ignore-unknown-defaults.patch
-# 1424575 - backport visudo severity of the message
-Patch11: sudo-1.8.19p2-error-warning-visudo-message.patch
-# 1369856 - synchronous (real-time) writes in sudo i/o logs
-Patch12: sudo-1.8.19p2-iologflush.patch
-# 1293306 - Sudo group lookup issue.
-Patch13: sudo-1.8.19p2-lookup-issue-doc.patch
-# 1360687 -  sudo rhel-7 rebase - comment11
-Patch14: sudo-1.8.19p2-upstream-testsuitefix.patch
-# 1360687 -  sudo rhel-7 rebase - comment13
-Patch15: sudo-1.8.19p2-fqdn-use-after-free.patch
-# 1360687 -  sudo rhel-7 rebase - comment13
-Patch16: sudo-1.8.19p2-lecture-boolean.patch
-# 1455402 - CVE-2017-1000367: Privilege escalation in via improper get_process_ttyname() parsing
-Patch17: sudo-1.8.19p2-get_process_ttyname.patch
-# 1459152 - CVE-2017-1000368: Privilege escalation via improper get_process_ttyname() parsing (insufficient fix for CVE-2017-1000367)
-Patch18: sudo-1.8.19p2-CVE-2017-1000368.patch
-# 1485397 - sudo breaking who ldap and local users after upgrade
-Patch19: sudo-1.8.21-ldap-pass2-filter.patch
-# 1458696 - successful sudo -l returns non-zero if asking for other user
-Patch20: sudo-1.8.19p2-display-privs.patch
-# 1454571 - Sudo, with I/O Logging log_output option enabled, truncate output in case of cycle over standard input
-Patch21: sudo-1.8.19p2-iologtruncate.patch
-# 1490358 - Update use_pty and IO logging man page
-Patch22: sudo-1.8.19p2-manpage-use_pty.patch
-# 1505409 - Regression in "sudo -l" when using IPA / sssd
-Patch23: sudo-1.8.19p2-sudo-l-sssd.patch
-# 1518104 - sudo crashed: double free or corruption (fasttop)
-Patch24: sudo-1.8.19p2-sssd-double-free.patch
-# 1560657 - sudo blocks in poll() for /dev/ptmx with iolog enabled
-Patch25: sudo-1.8.19p2-iolog-zombie.patch
+Patch7: sudo-1.8.23-nowaitopt.patch
+# 1533964 - sudo skips PAM account module in case NOPASSWD is used in sudoers
+#  This is fix of a regression in the referenced feature request. It was fixed
+#  in newer versions of sudo and we backport it to prevent future regression
+#  bz in RHEL. The feature itself was delivered via the rebase to 1.8.23.
+Patch8: sudo-1.8.23-Ignore-PAM_NEW_AUTHTOK_REQD-and-PAM_AUTHTOK_EXPIRED.patch
+# 1547974 - (sudo-rhel-7.6-rebase) Rebase sudo to latest stable upstream version
+Patch9: sudo-1.8.23-fix-double-quote-parsing-for-Defaults-values.patch 
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -103,29 +77,13 @@ plugins that use %{name}.
 
 %patch1 -p1 -b .strip
 %patch2 -p1 -b .envdebug
-%patch3 -p1 -b .nowaitopt
-%patch4 -p1 -b .sudoldapconfman
-%patch5 -p1 -b .doublequotefix
-%patch6 -p1 -b .digest-backport
-%patch7 -p1 -b .ldapsearchuidfix
-%patch8 -p1 -b .logsudouser
-%patch9 -p1 -b .testsuite
-%patch10 -p1 -b .ignoreunknowndefaults
-%patch11 -p1 -b .errorwarningvisudomsg
-%patch12 -p1 -b .iologflush
-%patch13 -p1 -b .lookup
-%patch14 -p1 -b .testsuite
-%patch15 -p1 -b .fqdnafterfree
-%patch16 -p1 -b .lecture
-%patch17 -p1 -b .get_process_ttyname
-%patch18 -p1 -b .CVE-2017-1000368
-%patch19 -p1 -b .ldap-pass2-filter
-%patch20 -p1 -b .display-privs
-%patch21 -p1 -b .iologtruncate
-%patch22 -p1 -b .manpage
-%patch23 -p1 -b .sudo-l
-%patch24 -p1 -b .double-free
-%patch25 -p1 -b .iolog-zombie
+%patch3 -p1 -b .sudoldapconfman
+%patch4 -p1 -b .legacy-group-processing
+%patch5 -p1 -b .ldapsearchuidfix
+%patch6 -p1 -b .logsudouser
+%patch7 -p1 -b .nowaitopt
+%patch8 -p1 -b .pam-mgmt-ignore-errors
+%patch9 -p1 -b .defaults-double-quote-fix
 
 %build
 autoreconf -I m4 -fv --install
@@ -147,9 +105,9 @@ export CFLAGS="$RPM_OPT_FLAGS $F_PIE" LDFLAGS="-pie -Wl,-z,relro -Wl,-z,now" SHL
         --with-logfac=authpriv \
         --with-pam \
         --with-pam-login \
-        --with-editor=/bin/vi \
+        --with-editor=/usr/bin/vi \
         --with-env-editor \
-        --with-gcrypt \
+        --enable-gcrypt \
         --with-ignore-dot \
         --with-tty-tickets \
         --with-ldap \
@@ -158,32 +116,33 @@ export CFLAGS="$RPM_OPT_FLAGS $F_PIE" LDFLAGS="-pie -Wl,-z,relro -Wl,-z,now" SHL
         --with-passprompt="[sudo] password for %p: " \
         --with-linux-audit \
         --with-sssd
-#       --without-kerb5 \
-#       --without-kerb4
+
 make
 
+%check
 make check
 
 %install
-rm -rf $RPM_BUILD_ROOT
+rm -rf %{buildroot}
 
 # Update README.LDAP (#736653)
 sed -i 's|/etc/ldap\.conf|%{_sysconfdir}/sudo-ldap.conf|g' README.LDAP
 
-make install DESTDIR="$RPM_BUILD_ROOT" install_uid=`id -u` install_gid=`id -g` sudoers_uid=`id -u` sudoers_gid=`id -g`
-chmod 755 $RPM_BUILD_ROOT%{_bindir}/* $RPM_BUILD_ROOT%{_sbindir}/*
-install -p -d -m 700 $RPM_BUILD_ROOT/var/db/sudo
-install -p -d -m 700 $RPM_BUILD_ROOT/var/db/sudo/lectured
-install -p -d -m 750 $RPM_BUILD_ROOT/etc/sudoers.d
-install -p -c -m 0440 %{SOURCE1} $RPM_BUILD_ROOT/etc/sudoers
-install -p -c -m 0640 %{SOURCE3} $RPM_BUILD_ROOT/etc/sudo.conf
-install -p -c -m 0640 %{SOURCE2} $RPM_BUILD_ROOT/%{_sysconfdir}/sudo-ldap.conf
+make install DESTDIR="%{buildroot}" install_uid=`id -u` install_gid=`id -g` sudoers_uid=`id -u` sudoers_gid=`id -g`
 
-# Remove execute permission on this script so we don't pull in perl deps
-chmod -x $RPM_BUILD_ROOT%{_docdir}/sudo-*/sudoers2ldif
+chmod 755 %{buildroot}%{_bindir}/* %{buildroot}%{_sbindir}/*
+install -p -d -m 700 %{buildroot}%{_localstatedir}/db/sudo
+install -p -d -m 700 %{buildroot}%{_localstatedir}/db/sudo/lectured
+install -p -d -m 750 %{buildroot}%{_sysconfdir}/sudoers.d
+install -p -c -m 0440 %{SOURCE1} %{buildroot}%{_sysconfdir}/sudoers
+install -p -c -m 0640 %{SOURCE3} %{buildroot}%{_sysconfdir}/sudo.conf
+install -p -c -m 0640 %{SOURCE2} %{buildroot}%{_sysconfdir}/sudo-ldap.conf
 
-#Remove all .la files
-find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
+# Remove upstream sudoers file
+rm -f %{buildroot}%{_sysconfdir}/sudoers.dist
+
+# Remove all .la files
+find %{buildroot} -name '*.la' -exec rm -f {} ';'
 
 %find_lang sudo
 %find_lang sudoers
@@ -191,42 +150,44 @@ find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
 cat sudo.lang sudoers.lang > sudo_all.lang
 rm sudo.lang sudoers.lang
 
-mkdir -p $RPM_BUILD_ROOT/etc/pam.d
-cat > $RPM_BUILD_ROOT/etc/pam.d/sudo << EOF
+mkdir -p %{buildroot}%{_sysconfdir}/pam.d
+cat > %{buildroot}%{_sysconfdir}/pam.d/sudo << EOF
 #%%PAM-1.0
 auth       include      system-auth
 account    include      system-auth
 password   include      system-auth
 session    optional     pam_keyinit.so revoke
 session    required     pam_limits.so
+session    include      system-auth
 EOF
 
-cat > $RPM_BUILD_ROOT/etc/pam.d/sudo-i << EOF
+cat > %{buildroot}%{_sysconfdir}/pam.d/sudo-i << EOF
 #%%PAM-1.0
 auth       include      sudo
 account    include      sudo
 password   include      sudo
 session    optional     pam_keyinit.so force revoke
 session    required     pam_limits.so
+session    include      sudo
 EOF
 
-
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf %{buildroot}
 
 %files -f sudo_all.lang
 %defattr(-,root,root)
-%attr(0440,root,root) %config(noreplace) /etc/sudoers
-%attr(0640,root,root) %config(noreplace) /etc/sudo.conf
+%attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers
+%attr(0640,root,root) %config(noreplace) %{_sysconfdir}/sudo.conf
 %attr(0640,root,root) %config(noreplace) %{_sysconfdir}/sudo-ldap.conf
-%attr(0750,root,root) %dir /etc/sudoers.d/
-%config(noreplace) /etc/pam.d/sudo
-%config(noreplace) /etc/pam.d/sudo-i
+%attr(0750,root,root) %dir %{_sysconfdir}/sudoers.d/
+%config(noreplace) %{_sysconfdir}/pam.d/sudo
+%config(noreplace) %{_sysconfdir}/pam.d/sudo-i
 %attr(0644,root,root) %{_tmpfilesdir}/sudo.conf
-%dir /var/db/sudo
-%dir /var/db/sudo/lectured
+%dir %{_localstatedir}/db/sudo
+%dir %{_localstatedir}/db/sudo/lectured
 %attr(4111,root,root) %{_bindir}/sudo
 %{_bindir}/sudoedit
+%{_bindir}/cvtsudoers
 %attr(0111,root,root) %{_bindir}/sudoreplay
 %attr(0755,root,root) %{_sbindir}/visudo
 %attr(0755,root,root) %{_libexecdir}/sudo/sesh
@@ -245,13 +206,14 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudoedit.8*
 %{_mandir}/man8/sudoreplay.8*
 %{_mandir}/man8/visudo.8*
+%{_mandir}/man1/cvtsudoers.1.gz
+%{_mandir}/man5/sudoers_timestamp.5.gz
 %dir %{_docdir}/sudo-%{version}
 %{_docdir}/sudo-%{version}/*
 
-
 # Make sure permissions are ok even if we're updating
 %post
-/bin/chmod 0440 /etc/sudoers || :
+/bin/chmod 0440 %{_sysconfdir}/sudoers || :
 
 %files devel
 %defattr(-,root,root,-)
@@ -260,9 +222,25 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
-* Mon May 28 2018 Daniel Kopecek <dkopecek@redhat.com> - 1.8.19p2-14
-- Fixed deadlocking after command termination when iolog is enabled
-  Resolves: rhbz#1582155
+* Mon Sep 24 2018 Daniel Kopecek <dkopecek@redhat.com> 1.8.23-3
+- RHEL-7.6 erratum
+  Resolves: rhbz#1547974 - Rebase sudo to latest stable upstream version
+
+* Fri Sep 21 2018 Daniel Kopecek <dkopecek@redhat.com> 1.8.23-2
+- RHEL-7.6 erratum
+  Resolves: rhbz#1533964 - sudo skips PAM account module in case NOPASSWD is used in sudoers
+  Resolves: rhbz#1506025 - Latest update broke sudo for ldap users.
+  Resolves: rhbz#1502630 - inclusion of system-auth for session hooks missing in sudo PAM snippets
+
+* Thu Jun 28 2018 Daniel Kopecek <dkopecek@redhat.com> 1.8.23-1
+- RHEL-7.6 erratum
+  Resolves: rhbz#1547974 - Rebase sudo to latest stable upstream version (1.8.23)
+  Resolves: rhbz#1502630 - inclusion of system-auth for session hooks missing in sudo PAM snippets
+  Resolves: rhbz#1506025 - Latest update broke sudo for ldap users.
+  Resolves: rhbz#1533964 - sudo skips PAM account module in case NOPASSWD is used in sudoers
+  Resolves: rhbz#1548380 - RFE: Create flag to filter to sudo -l output
+  Resolves: rhbz#1510002 - Ensure that the command input (stdin) eating behaviour of Default log_input is documented
+  Resolves: rhbz#1596032 - Why does sudo package depend on vim-minimal?
 
 * Thu Nov 30 2017 Radovan Sroka <rsroka@redhat.com> 1.8.19p2-13
 - RHEL 7.5 erratum

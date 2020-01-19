@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2013-2016 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -80,7 +80,7 @@ sudo_strtoid_v1(const char *p, const char *sep, char **endp, const char **errstr
     }
     if (errno == ERANGE) {
 	if (errstr != NULL) {
-	    if (llval == LLONG_MAX)) {
+	    if (llval == LLONG_MAX)
 		*errstr = N_("value too large");
 	    else
 		*errstr = N_("value too small");

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1999-2005, 2007-2008, 2010-2015
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -197,7 +197,7 @@ sudo_krb5_verify(struct passwd *pw, char *pass, sudo_auth *auth, struct sudo_con
 }
 #else
 int
-sudo_krb5_verify(struct passwd *pw, char *pass, sudo_auth *auth)
+sudo_krb5_verify(struct passwd *pw, char *pass, sudo_auth *auth, struct sudo_conv_callback *callback)
 {
     krb5_context	sudo_context;
     krb5_principal	princ;

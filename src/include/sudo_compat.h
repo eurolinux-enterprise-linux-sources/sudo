@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1996, 1998-2005, 2008, 2009-2017
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -164,6 +164,9 @@
 #ifndef _S_IFLNK
 # define _S_IFLNK		S_IFLNK
 #endif /* _S_IFLNK */
+#ifndef _S_IFIFO
+# define _S_IFIFO		S_IFIFO
+#endif /* _S_IFIFO */
 #ifndef S_ISREG
 # define S_ISREG(m)		(((m) & _S_IFMT) == _S_IFREG)
 #endif /* S_ISREG */
@@ -172,6 +175,9 @@
 #endif /* S_ISDIR */
 #ifndef S_ISLNK
 # define S_ISLNK(m)		(((m) & _S_IFMT) == _S_IFLNK)
+#endif /* S_ISLNK */
+#ifndef S_ISFIFO
+# define S_ISFIFO(m)		(((m) & _S_IFMT) == _S_IFIFO)
 #endif /* S_ISLNK */
 #ifndef S_ISTXT
 # define S_ISTXT		0001000
@@ -200,6 +206,11 @@
 # ifndef AT_FDCWD
 #  define AT_FDCWD	-100
 # endif
+#endif
+
+/* For pipe2() emulation. */
+#if !defined(HAVE_PIPE2) && defined(O_NONBLOCK) && !defined(O_CLOEXEC)
+# define O_CLOEXEC	0x80000000
 #endif
 
 /*
@@ -244,20 +255,6 @@ __dso_public int isblank(int);
 #endif /* HAVE__INNETGR */
 
 /*
- * Add IRIX-like sigaction_t for those without it.
- * SA_RESTART is not required by POSIX; SunOS has SA_INTERRUPT instead.
- */
-#ifndef HAVE_SIGACTION_T
-typedef struct sigaction sigaction_t;
-#endif
-#ifndef SA_INTERRUPT
-# define SA_INTERRUPT	0
-#endif
-#ifndef SA_RESTART
-# define SA_RESTART	0
-#endif
-
-/*
  * The nitems macro may be defined in sys/param.h
  */
 #ifndef nitems
@@ -273,7 +270,7 @@ typedef struct sigaction sigaction_t;
 #endif
 
 #if !defined(HAVE_KILLPG) && !defined(killpg)
-# define killpg(s)	kill(-(s))
+# define killpg(p, s)	kill(-(p), (s))
 #endif
 
 /*
@@ -520,5 +517,10 @@ __dso_public void sudo_vsyslog(int pri, const char *fmt, va_list ap);
 # undef vsyslog
 # define vsyslog(_a, _b, _c) sudo_vsyslog((_a), (_b), (_c))
 #endif /* HAVE_VSYSLOG */
+#ifndef HAVE_PIPE2
+__dso_public int sudo_pipe2(int fildes[2], int flags);
+# undef pipe2
+# define pipe2(_a, _b) sudo_pipe2((_a), (_b))
+#endif /* HAVE_PIPE2 */
 
 #endif /* SUDO_COMPAT_H */

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 1996, 1998-2005, 2007-2015
- *	Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 1996, 1998-2005, 2007-2015, 2018
+ *	Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -32,7 +32,6 @@ struct rtentry;
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/ioctl.h>
 #if defined(HAVE_SYS_SOCKIO_H) && !defined(SIOCGIFCONF)
 # include <sys/sockio.h>

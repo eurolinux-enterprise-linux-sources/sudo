@@ -1,7 +1,7 @@
 dnl Local m4 macros for autoconf (used by sudo)
 dnl
 dnl Copyright (c) 1994-1996, 1998-2005, 2007-2015
-dnl	Todd C. Miller <Todd.Miller@courtesan.com>
+dnl	Todd C. Miller <Todd.Miller@sudo.ws>
 dnl
 dnl XXX - should cache values in all cases!!!
 dnl
@@ -108,7 +108,7 @@ dnl
 AC_DEFUN([SUDO_RUNDIR], [AC_MSG_CHECKING(for sudo run dir location)
 rundir="$with_rundir"
 if test -z "$rundir"; then
-    for d in /var/run /var/db /var/lib /var/adm /usr/adm; do
+    for d in /run /var/run /var/db /var/lib /var/adm /usr/adm; do
 	if test -d "$d"; then
 	    rundir="$d/sudo"
 	    break
