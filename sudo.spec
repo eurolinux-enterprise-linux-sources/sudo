@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.19p2
-Release: 13%{?dist}
+Release: 14%{?dist}
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -75,6 +75,8 @@ Patch22: sudo-1.8.19p2-manpage-use_pty.patch
 Patch23: sudo-1.8.19p2-sudo-l-sssd.patch
 # 1518104 - sudo crashed: double free or corruption (fasttop)
 Patch24: sudo-1.8.19p2-sssd-double-free.patch
+# 1560657 - sudo blocks in poll() for /dev/ptmx with iolog enabled
+Patch25: sudo-1.8.19p2-iolog-zombie.patch
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -123,6 +125,7 @@ plugins that use %{name}.
 %patch22 -p1 -b .manpage
 %patch23 -p1 -b .sudo-l
 %patch24 -p1 -b .double-free
+%patch25 -p1 -b .iolog-zombie
 
 %build
 autoreconf -I m4 -fv --install
@@ -257,6 +260,10 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
+* Mon May 28 2018 Daniel Kopecek <dkopecek@redhat.com> - 1.8.19p2-14
+- Fixed deadlocking after command termination when iolog is enabled
+  Resolves: rhbz#1582155
+
 * Thu Nov 30 2017 Radovan Sroka <rsroka@redhat.com> 1.8.19p2-13
 - RHEL 7.5 erratum
 - Fixed sudo -l checking results whether user should be authenticated
