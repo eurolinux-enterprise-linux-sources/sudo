@@ -1,0 +1,119 @@
+From b1f3fcf8d6e9a8e5326771a12fac8e08ed81f766 Mon Sep 17 00:00:00 2001
+From: Tomas Sykora <tosykora@redhat.com>
+Date: Fri, 19 Aug 2016 10:21:27 +0200
+Subject: [PATCH] Sudo with ldap doesn't work with 'user id'
+
+in sudoUser option.
+
+Rebased from:
+Patch39: sudo-1.8.6p7-ldapsearchuidfix.patch
+
+Resolves:
+rhbz#1135539
+---
+ plugins/sudoers/def_data.c  |  4 ++++
+ plugins/sudoers/def_data.h  |  2 ++
+ plugins/sudoers/def_data.in |  3 +++
+ plugins/sudoers/defaults.c  |  2 ++
+ plugins/sudoers/ldap.c      | 10 ++++++++--
+ plugins/sudoers/sudoers.c   |  4 ++++
+ 6 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/plugins/sudoers/def_data.c b/plugins/sudoers/def_data.c
+index d8b1ada..3926fed 100644
+--- a/plugins/sudoers/def_data.c
++++ b/plugins/sudoers/def_data.c
+@@ -439,6 +439,10 @@ struct sudo_defs_types sudo_defs_table[] = {
+ 	N_("Don't fork and wait for the command to finish, just exec it"),
+ 	NULL,
+     }, {
++	"legacy_group_processing", T_FLAG,
++	N_("Don't pre-resolve all group names"),
++	NULL,
++    }, {
+ 	NULL, 0, NULL
+     }
+ };
+diff --git a/plugins/sudoers/def_data.h b/plugins/sudoers/def_data.h
+index 1b6be3d..5246e41 100644
+--- a/plugins/sudoers/def_data.h
++++ b/plugins/sudoers/def_data.h
+@@ -206,6 +206,8 @@
+ #define def_iolog_mode          (sudo_defs_table[I_IOLOG_MODE].sd_un.mode)
+ #define I_CMND_NO_WAIT          103
+ #define def_cmnd_no_wait        (sudo_defs_table[I_CMND_NO_WAIT].sd_un.flag)
++#define I_LEGACY_GROUP_PROCESSING 104
++#define def_legacy_group_processing (sudo_defs_table[I_LEGACY_GROUP_PROCESSING].sd_un.flag)
+ 
+ enum def_tuple {
+ 	never,
+diff --git a/plugins/sudoers/def_data.in b/plugins/sudoers/def_data.in
+index 5200fe3..f1c9265 100644
+--- a/plugins/sudoers/def_data.in
++++ b/plugins/sudoers/def_data.in
+@@ -325,3 +325,6 @@ iolog_mode
+ cmnd_no_wait
+ 	T_FLAG
+ 	"Don't fork and wait for the command to finish, just exec it"
++legacy_group_processing
++	T_FLAG
++	"Don't pre-resolve all group names"
+diff --git a/plugins/sudoers/defaults.c b/plugins/sudoers/defaults.c
+index 5eaf8ea..9e60d94 100644
+--- a/plugins/sudoers/defaults.c
++++ b/plugins/sudoers/defaults.c
+@@ -450,6 +450,8 @@ init_defaults(void)
+     }
+ 
+     /* First initialize the flags. */
++    def_legacy_group_processing = true;
++    def_match_group_by_gid = true;
+ #ifdef LONG_OTP_PROMPT
+     def_long_otp_prompt = true;
+ #endif
+diff --git a/plugins/sudoers/ldap.c b/plugins/sudoers/ldap.c
+index 3fe27c7..96a0709 100644
+--- a/plugins/sudoers/ldap.c
++++ b/plugins/sudoers/ldap.c
+@@ -1666,8 +1666,8 @@ sudo_ldap_build_pass1(LDAP *ld, struct passwd *pw)
+     if (ldap_conf.search_filter)
+ 	sz += strlen(ldap_conf.search_filter);
+ 
+-    /* Then add (|(sudoUser=USERNAME)(sudoUser=ALL)) + NUL */
+-    sz += 29 + sudo_ldap_value_len(pw->pw_name);
++    /* Then add (|(sudoUser=USERNAME)(sudoUser=#uid)(sudoUser=ALL)) + NUL */
++    sz += 29 + (12 + MAX_UID_T_LEN) + sudo_ldap_value_len(pw->pw_name);
+ 
+     /* Add space for primary and supplementary groups and gids */
+     if ((grp = sudo_getgrgid(pw->pw_gid)) != NULL) {
+@@ -1730,6 +1730,12 @@ sudo_ldap_build_pass1(LDAP *ld, struct passwd *pw)
+     CHECK_LDAP_VCAT(buf, pw->pw_name, sz);
+     CHECK_STRLCAT(buf, ")", sz);
+ 
++    /* Append user uid */
++    (void) snprintf(gidbuf, sizeof(gidbuf), "%u", (unsigned int)pw->pw_uid);
++    (void) strlcat(buf, "(sudoUser=#", sz);
++    (void) strlcat(buf, gidbuf, sz);
++    (void) strlcat(buf, ")", sz);
++
+     /* Append primary group and gid */
+     if (grp != NULL) {
+ 	CHECK_STRLCAT(buf, "(sudoUser=%", sz);
+diff --git a/plugins/sudoers/sudoers.c b/plugins/sudoers/sudoers.c
+index 539177a..673ee5d 100644
+--- a/plugins/sudoers/sudoers.c
++++ b/plugins/sudoers/sudoers.c
+@@ -208,6 +208,10 @@ sudoers_policy_init(void *info, char * const envp[])
+     if (set_loginclass(runas_pw ? runas_pw : sudo_user.pw))
+ 	ret = true;
+ 
++    if (!def_match_group_by_gid || !def_legacy_group_processing) {
++        def_match_group_by_gid = false;
++	def_legacy_group_processing = false;
++    }
+ cleanup:
+     if (!restore_perms())
+ 	ret = -1;
+-- 
+2.7.4
+

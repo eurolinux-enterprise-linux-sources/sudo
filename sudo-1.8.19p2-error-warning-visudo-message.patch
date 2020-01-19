@@ -1,0 +1,53 @@
+From daa728fd889680cf5294fbb0e836cade9fe1a6d8 Mon Sep 17 00:00:00 2001
+From: "Todd C. Miller" <Todd.Miller@courtesan.com>
+Date: Wed, 22 Feb 2017 06:38:33 -0700
+Subject: [PATCH] Go back to using a Warning/Error prefix in the message
+ printed to stderr for alias problems.  Requested by Tomas Sykora.
+
+---
+ doc/visudo.cat                              | 10 +++++-----
+ doc/visudo.man.in                           | 12 ++++++------
+ doc/visudo.mdoc.in                          | 12 ++++++------
+ plugins/sudoers/regress/visudo/test2.err.ok |  2 +-
+ plugins/sudoers/regress/visudo/test3.err.ok |  4 ++--
+ plugins/sudoers/visudo.c                    | 14 ++++++++++----
+ 6 files changed, 30 insertions(+), 24 deletions(-)
+
+diff --git a/plugins/sudoers/visudo.c b/plugins/sudoers/visudo.c
+index 4f192b2..4793d54 100644
+--- a/plugins/sudoers/visudo.c
++++ b/plugins/sudoers/visudo.c
+@@ -1137,12 +1137,17 @@ check_alias(char *name, int type, char *file, int lineno, bool strict, bool quie
+     } else {
+ 	if (!quiet) {
+ 	    if (errno == ELOOP) {
+-		sudo_warnx(U_("%s:%d cycle in %s \"%s\""),
++		fprintf(stderr, strict ?
++		    U_("Error: %s:%d cycle in %s \"%s\"") :
++		    U_("Warning: %s:%d cycle in %s \"%s\""),
+ 		    file, lineno, alias_type_to_string(type), name);
+ 	    } else {
+-		sudo_warnx(U_("%s:%d %s \"%s\" referenced but not defined"),
++		fprintf(stderr, strict ?
++		    U_("Error: %s:%d %s \"%s\" referenced but not defined") :
++		    U_("Warning: %s:%d %s \"%s\" referenced but not defined"),
+ 		    file, lineno, alias_type_to_string(type), name);
+ 	    }
++	    fputc('\n', stderr);
+ 	    if (strict && errorfile == NULL) {
+ 		errorfile = rcstr_addref(file);
+ 		errorlineno = lineno;
+@@ -1292,8 +1297,9 @@ print_unused(void *v1, void *v2)
+ {
+     struct alias *a = (struct alias *)v1;
+ 
+-    sudo_warnx_nodebug(U_("%s:%d unused %s \"%s\""),
++    fprintf(stderr, U_("Warning: %s:%d unused %s \"%s\""),
+ 	a->file, a->lineno, alias_type_to_string(a->type), a->name);
++    fputc('\n', stderr);
+     return 0;
+ }
+ 
+-- 
+2.7.4
+

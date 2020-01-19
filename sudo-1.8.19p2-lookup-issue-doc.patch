@@ -1,0 +1,164 @@
+diff -up ./doc/sudoers.cat.lookup ./doc/sudoers.cat
+--- ./doc/sudoers.cat.lookup	2017-04-25 13:17:51.073190114 +0200
++++ ./doc/sudoers.cat	2017-04-25 13:17:51.081190069 +0200
+@@ -1140,24 +1140,39 @@ SSUUDDOOEERRSS OOPPTTIIOONN
+                        _o_n by default.
+ 
+      match_group_by_gid
+-                       By default, when matching groups, ssuuddooeerrss will first
+-                       resolve all the user's group IDs to group names and
+-                       then compare those group names to any group names
+-                       listed in the _s_u_d_o_e_r_s file.  This works well on systems
+-                       where the number of groups listed in the _s_u_d_o_e_r_s file
+-                       is larger than the number of groups a typical user
+-                       belongs to.  On systems where group lookups are slow,
+-                       where users may belong to a large number of groups, and
+-                       where the number of groups listed in the _s_u_d_o_e_r_s file
+-                       is relatively small, it may be prohibitively expensive
+-                       and running commands via ssuuddoo may take longer than
+-                       normal.  On such systems it may be faster to use the
++                       By default, ssuuddooeerrss will look up each group the user is
++                       a member of by group ID to determine the group name
++                       (this is only done once).  The resulting list of the
++                       user's group names is used when matching groups listed
++                       in the _s_u_d_o_e_r_s file.  This works well on systems where
++                       the number of groups listed in the _s_u_d_o_e_r_s file is
++                       larger than the number of groups a typical user belongs
++                       to.  On systems where group lookups are slow, where
++                       users may belong to a large number of groups, and where
++                       the number of groups listed in the _s_u_d_o_e_r_s file is
++                       relatively small, it may be prohibitively expensive and
++                       running commands via ssuuddoo may take longer than normal.
++                       On such systems it may be faster to use the
+                        _m_a_t_c_h___g_r_o_u_p___b_y___g_i_d flag to avoid resolving the user's
+-                       group IDs to group names and instead resolve all group
+-                       names listed in the _s_u_d_o_e_r_s file, matching by group ID
+-                       instead of by group name.  The _m_a_t_c_h___g_r_o_u_p___b_y___g_i_d flag
+-                       has no effect when _s_u_d_o_e_r_s data is stored in LDAP.
+-                       This flag is _o_f_f by default.
++                       group IDs to group names.  In this case, ssuuddooeerrss must
++                       look up any group name listed in the _s_u_d_o_e_r_s file and
++                       use the group ID instead of the group name when
++                       determining whether the user is a member of the group.
++
++                       Note that if _m_a_t_c_h___g_r_o_u_p___b_y___g_i_d is enabled, group
++                       database lookups performed by ssuuddooeerrss will be keyed by
++                       group name as opposed to group ID.  On systems where
++                       there are multiple sources for the group database, it
++                       is possible to have conflicting group names or group
++                       IDs in the local _/_e_t_c_/_g_r_o_u_p file and the remote group
++                       database.  On such systems, enabling or disabling
++                       _m_a_t_c_h___g_r_o_u_p___b_y___g_i_d can be used to choose whether group
++                       database queries are performed by name (enabled) or ID
++                       (disabled), which may aid in working around group entry
++                       conflicts.
++
++                       The _m_a_t_c_h___g_r_o_u_p___b_y___g_i_d flag has no effect when _s_u_d_o_e_r_s
++                       data is stored in LDAP.  This flag is _o_f_f by default.
+ 
+                        This setting is only supported by version 1.8.18 or
+                        higher.
+diff -up ./doc/sudoers.man.in.lookup ./doc/sudoers.man.in
+--- ./doc/sudoers.man.in.lookup	2017-04-25 13:17:51.074190108 +0200
++++ ./doc/sudoers.man.in	2017-04-25 13:17:51.082190064 +0200
+@@ -2423,10 +2423,12 @@ This flag is
+ by default.
+ .TP 18n
+ match_group_by_gid
+-By default, when matching groups,
++By default,
+ \fBsudoers\fR
+-will first resolve all the user's group IDs to group names and then
+-compare those group names to any group names listed in the
++will look up each group the user is a member of by group ID to
++determine the group name (this is only done once).
++The resulting list of the user's group names is used when matching
++groups listed in the
+ \fIsudoers\fR
+ file.
+ This works well on systems where the number of groups listed in the
+@@ -2442,10 +2444,29 @@ running commands via
+ may take longer than normal.
+ On such systems it may be faster to use the
+ \fImatch_group_by_gid\fR
+-flag to avoid resolving the user's group IDs to group names and
+-instead resolve all group names listed in the
++flag to avoid resolving the user's group IDs to group names.
++In this case,
++\fBsudoers\fR
++must look up any group name listed in the
+ \fIsudoers\fR
+-file, matching by group ID instead of by group name.
++file and use the group ID instead of the group name when determining
++whether the user is a member of the group.
++.sp
++Note that if
++\fImatch_group_by_gid\fR
++is enabled, group database lookups performed by
++\fBsudoers\fR
++will be keyed by group name as opposed to group ID.
++On systems where there are multiple sources for the group database,
++it is possible to have conflicting group names or group IDs in the local
++\fI/etc/group\fR
++file and the remote group database.
++On such systems, enabling or disabling
++\fImatch_group_by_gid\fR
++can be used to choose whether group database queries are performed
++by name (enabled) or ID (disabled), which may aid in working around
++group entry conflicts.
++.sp
+ The
+ \fImatch_group_by_gid\fR
+ flag has no effect when
+diff -up ./doc/sudoers.mdoc.in.lookup ./doc/sudoers.mdoc.in
+--- ./doc/sudoers.mdoc.in.lookup	2017-04-25 13:17:51.075190102 +0200
++++ ./doc/sudoers.mdoc.in	2017-04-25 13:17:51.082190064 +0200
+@@ -2268,10 +2268,12 @@ This flag is
+ .Em @mail_no_user@
+ by default.
+ .It match_group_by_gid
+-By default, when matching groups,
++By default,
+ .Nm
+-will first resolve all the user's group IDs to group names and then
+-compare those group names to any group names listed in the
++will look up each group the user is a member of by group ID to
++determine the group name (this is only done once).
++The resulting list of the user's group names is used when matching
++groups listed in the
+ .Em sudoers
+ file.
+ This works well on systems where the number of groups listed in the
+@@ -2287,10 +2289,29 @@ running commands via
+ may take longer than normal.
+ On such systems it may be faster to use the
+ .Em match_group_by_gid
+-flag to avoid resolving the user's group IDs to group names and
+-instead resolve all group names listed in the
++flag to avoid resolving the user's group IDs to group names.
++In this case,
++.Nm
++must look up any group name listed in the
+ .Em sudoers
+-file, matching by group ID instead of by group name.
++file and use the group ID instead of the group name when determining
++whether the user is a member of the group.
++.Pp
++Note that if
++.Em match_group_by_gid
++is enabled, group database lookups performed by
++.Nm
++will be keyed by group name as opposed to group ID.
++On systems where there are multiple sources for the group database,
++it is possible to have conflicting group names or group IDs in the local
++.Pa /etc/group
++file and the remote group database.
++On such systems, enabling or disabling
++.Em match_group_by_gid
++can be used to choose whether group database queries are performed
++by name (enabled) or ID (disabled), which may aid in working around
++group entry conflicts.
++.Pp
+ The
+ .Em match_group_by_gid
+ flag has no effect when

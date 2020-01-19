@@ -1,0 +1,76 @@
+diff -ru sudo-1.8.20/src/ttyname.c sudo-1.8.20-Q/src/ttyname.c
+--- sudo-1.8.20/src/ttyname.c	2017-05-10 08:38:44.000000000 -0700
++++ sudo-1.8.20-Q/src/ttyname.c	2017-05-19 02:15:48.442705049 -0700
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2012-2016 Todd C. Miller <Todd.Miller@courtesan.com>
++ * Copyright (c) 2012-2017 Todd C. Miller <Todd.Miller@courtesan.com>
+  *
+  * Permission to use, copy, modify, and distribute this software for any
+  * purpose with or without fee is hereby granted, provided that the above
+@@ -159,6 +159,8 @@
+ 
+ static char *ignore_devs[] = {
+     "/dev/fd/",
++    "/dev/mqueue/",
++    "/dev/shm/",
+     "/dev/stdin",
+     "/dev/stdout",
+     "/dev/stderr",
+@@ -493,28 +495,35 @@
+ 	len = getline(&line, &linesize, fp);
+ 	fclose(fp);
+ 	if (len != -1) {
+-	    /* Field 7 is the tty dev (0 if no tty) */
+-	    char *cp = line;
+-	    char *ep = line;
+-	    const char *errstr;
+-	    int field = 0;
+-	    while (*++ep != '\0') {
+-		if (*ep == ' ') {
+-		    *ep = '\0';
+-		    if (++field == 7) {
+-			dev_t tdev = strtonum(cp, INT_MIN, INT_MAX, &errstr);
+-			if (errstr) {
+-			    sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
+-				"%s: tty device %s: %s", path, cp, errstr);
++	    /*
++	     * Field 7 is the tty dev (0 if no tty).
++	     * Since the process name at field 2 "(comm)" may include spaces,
++	     * start at the last ')' found.
++	     */
++	    char *cp = strrchr(line, ')');
++	    if (cp != NULL) {
++		char *ep = cp;
++		const char *errstr;
++		int field = 1;
++
++		while (*++ep != '\0') {
++		    if (*ep == ' ') {
++			*ep = '\0';
++			if (++field == 7) {
++			    dev_t tdev = strtonum(cp, INT_MIN, INT_MAX, &errstr);
++			    if (errstr) {
++				sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
++				    "%s: tty device %s: %s", path, cp, errstr);
++			    }
++			    if (tdev > 0) {
++				errno = serrno;
++				ret = sudo_ttyname_dev(tdev, name, namelen);
++				goto done;
++			    }
++			    break;
+ 			}
+-			if (tdev > 0) {
+-			    errno = serrno;
+-			    ret = sudo_ttyname_dev(tdev, name, namelen);
+-			    goto done;
+-			}
+-			break;
++			cp = ep + 1;
+ 		    }
+-		    cp = ep + 1;
+ 		}
+ 	    }
+ 	}
+

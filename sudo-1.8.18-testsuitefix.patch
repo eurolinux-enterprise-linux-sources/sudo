@@ -1,0 +1,189 @@
+From ea44d916b9dffe0f33c3c62d1677567bf64a26b8 Mon Sep 17 00:00:00 2001
+From: Radovan Sroka <rsroka@redhat.com>
+Date: Tue, 20 Sep 2016 15:07:53 +0200
+Subject: [PATCH 10/10] Fix upstream testsuite
+
+---
+ plugins/sudoers/regress/sudoers/test2.in      | 60 ---------------------------
+ plugins/sudoers/regress/sudoers/test2.in_     | 60 +++++++++++++++++++++++++++
+ plugins/sudoers/regress/testsudoers/test3.sh  | 13 ------
+ plugins/sudoers/regress/testsudoers/test3.sh_ | 13 ++++++
+ 4 files changed, 73 insertions(+), 73 deletions(-)
+ delete mode 100644 plugins/sudoers/regress/sudoers/test2.in
+ create mode 100644 plugins/sudoers/regress/sudoers/test2.in_
+ delete mode 100755 plugins/sudoers/regress/testsudoers/test3.sh
+ create mode 100755 plugins/sudoers/regress/testsudoers/test3.sh_
+
+diff --git a/plugins/sudoers/regress/sudoers/test2.in b/plugins/sudoers/regress/sudoers/test2.in
+deleted file mode 100644
+index cfdfaa3..0000000
+--- a/plugins/sudoers/regress/sudoers/test2.in
++++ /dev/null
+@@ -1,60 +0,0 @@
+-# Check quoted user name in User_Alias
+-User_Alias UA1 = "foo"
+-User_Alias UA2 = "foo.bar"
+-User_Alias UA3 = "foo\""
+-User_Alias UA4 = "foo:bar"
+-User_Alias UA5 = "foo:bar\""
+-
+-# Check quoted group name in User_Alias
+-User_Alias UA6 = "%baz"
+-User_Alias UA7 = "%baz.biz"
+-
+-# Check quoted non-Unix group name in User_Alias
+-User_Alias UA8 = "%:C/non UNIX 0 c"
+-User_Alias UA9 = "%:C/non\'UNIX\'1 c"
+-User_Alias UA10 = "%:C/non\"UNIX\"0 c"
+-User_Alias UA11 = "%:C/non_UNIX_0 c"
+-User_Alias UA12 = "%:C/non\'UNIX_3 c"
+-
+-# Check quoted user name in Runas_Alias
+-Runas_Alias RA1 = "foo"
+-Runas_Alias RA2 = "foo\""
+-Runas_Alias RA3 = "foo:bar"
+-Runas_Alias RA4 = "foo:bar\""
+-
+-# Check quoted host name in Defaults
+-Defaults@"somehost" set_home
+-Defaults@"quoted\"" set_home
+-
+-# Check quoted user name in Defaults
+-Defaults:"you" set_home
+-Defaults:"us\"" set_home
+-Defaults:"%them" set_home
+-Defaults:"%: non UNIX 0 c" set_home
+-Defaults:"+net" set_home
+-
+-# Check quoted runas name in Defaults
+-Defaults>"someone" set_home
+-Defaults>"some one" set_home
+-
+-# Check quoted command in Defaults
+-# XXX - not currently supported
+-#Defaults!"/bin/ls -l" set_home
+-#Defaults!"/bin/ls -l \"foo\"" set_home
+-
+-# Check quoted user, runas and host name in Cmnd_Spec
+-"foo"		"hosta" = ("root") ALL
+-"foo.bar"	"hostb" = ("root") ALL
+-"foo\""		"hostc" = ("root") ALL
+-"foo:bar"	"hostd" = ("root") ALL
+-"foo:bar\""	"hoste" = ("root") ALL
+-
+-# Check quoted group/netgroup name in Cmnd_Spec
+-"%baz"			"hosta" = ("root") ALL
+-"%baz.biz"		"hostb" = ("root") ALL
+-"%:C/non UNIX 0 c"	"hostc" = ("root") ALL
+-"%:C/non\'UNIX\'1 c"	"hostd" = ("root") ALL
+-"%:C/non\"UNIX\"0 c"	"hoste" = ("root") ALL
+-"%:C/non_UNIX_0 c"	"hostf" = ("root") ALL
+-"%:C/non\'UNIX_3 c"	"hostg" = ("root") ALL
+-"+netgr"		"hosth" = ("root") ALL
+diff --git a/plugins/sudoers/regress/sudoers/test2.in_ b/plugins/sudoers/regress/sudoers/test2.in_
+new file mode 100644
+index 0000000..cfdfaa3
+--- /dev/null
++++ b/plugins/sudoers/regress/sudoers/test2.in_
+@@ -0,0 +1,60 @@
++# Check quoted user name in User_Alias
++User_Alias UA1 = "foo"
++User_Alias UA2 = "foo.bar"
++User_Alias UA3 = "foo\""
++User_Alias UA4 = "foo:bar"
++User_Alias UA5 = "foo:bar\""
++
++# Check quoted group name in User_Alias
++User_Alias UA6 = "%baz"
++User_Alias UA7 = "%baz.biz"
++
++# Check quoted non-Unix group name in User_Alias
++User_Alias UA8 = "%:C/non UNIX 0 c"
++User_Alias UA9 = "%:C/non\'UNIX\'1 c"
++User_Alias UA10 = "%:C/non\"UNIX\"0 c"
++User_Alias UA11 = "%:C/non_UNIX_0 c"
++User_Alias UA12 = "%:C/non\'UNIX_3 c"
++
++# Check quoted user name in Runas_Alias
++Runas_Alias RA1 = "foo"
++Runas_Alias RA2 = "foo\""
++Runas_Alias RA3 = "foo:bar"
++Runas_Alias RA4 = "foo:bar\""
++
++# Check quoted host name in Defaults
++Defaults@"somehost" set_home
++Defaults@"quoted\"" set_home
++
++# Check quoted user name in Defaults
++Defaults:"you" set_home
++Defaults:"us\"" set_home
++Defaults:"%them" set_home
++Defaults:"%: non UNIX 0 c" set_home
++Defaults:"+net" set_home
++
++# Check quoted runas name in Defaults
++Defaults>"someone" set_home
++Defaults>"some one" set_home
++
++# Check quoted command in Defaults
++# XXX - not currently supported
++#Defaults!"/bin/ls -l" set_home
++#Defaults!"/bin/ls -l \"foo\"" set_home
++
++# Check quoted user, runas and host name in Cmnd_Spec
++"foo"		"hosta" = ("root") ALL
++"foo.bar"	"hostb" = ("root") ALL
++"foo\""		"hostc" = ("root") ALL
++"foo:bar"	"hostd" = ("root") ALL
++"foo:bar\""	"hoste" = ("root") ALL
++
++# Check quoted group/netgroup name in Cmnd_Spec
++"%baz"			"hosta" = ("root") ALL
++"%baz.biz"		"hostb" = ("root") ALL
++"%:C/non UNIX 0 c"	"hostc" = ("root") ALL
++"%:C/non\'UNIX\'1 c"	"hostd" = ("root") ALL
++"%:C/non\"UNIX\"0 c"	"hoste" = ("root") ALL
++"%:C/non_UNIX_0 c"	"hostf" = ("root") ALL
++"%:C/non\'UNIX_3 c"	"hostg" = ("root") ALL
++"+netgr"		"hosth" = ("root") ALL
+diff --git a/plugins/sudoers/regress/testsudoers/test3.sh b/plugins/sudoers/regress/testsudoers/test3.sh
+deleted file mode 100755
+index c1251b9..0000000
+--- a/plugins/sudoers/regress/testsudoers/test3.sh
++++ /dev/null
+@@ -1,13 +0,0 @@
+-#!/bin/sh
+-#
+-# Test #include facility
+-#
+-
+-MYUID=`\ls -lnd $TESTDIR/test3.d | awk '{print $3}'`
+-MYGID=`\ls -lnd $TESTDIR/test3.d | awk '{print $4}'`
+-exec 2>&1
+-./testsudoers -U $MYUID -G $MYGID root id <<EOF
+-#includedir $TESTDIR/test3.d
+-EOF
+-
+-exit 0
+diff --git a/plugins/sudoers/regress/testsudoers/test3.sh_ b/plugins/sudoers/regress/testsudoers/test3.sh_
+new file mode 100755
+index 0000000..c1251b9
+--- /dev/null
++++ b/plugins/sudoers/regress/testsudoers/test3.sh_
+@@ -0,0 +1,13 @@
++#!/bin/sh
++#
++# Test #include facility
++#
++
++MYUID=`\ls -lnd $TESTDIR/test3.d | awk '{print $3}'`
++MYGID=`\ls -lnd $TESTDIR/test3.d | awk '{print $4}'`
++exec 2>&1
++./testsudoers -U $MYUID -G $MYGID root id <<EOF
++#includedir $TESTDIR/test3.d
++EOF
++
++exit 0
+-- 
+2.7.4
+
