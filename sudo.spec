@@ -1,7 +1,7 @@
 Summary: Allows restricted root access for specified users
 Name: sudo
 Version: 1.8.23
-Release: 4%{?dist}
+Release: 4%{?dist}.1
 License: ISC
 Group: Applications/System
 URL: http://www.courtesan.com/sudo/
@@ -57,6 +57,9 @@ Patch10: sudo-1.8.23-pam-expired-passwords.patch
 # 1665285 - Problem with sudo-1.8.23 and 'who am i'
 Patch11: sudo-1.8.23-who-am-i.patch
 
+# 1760694 - CVE-2019-14287 sudo: Privilege escalation via 'Runas' specification with 'ALL' keyword [rhel-7.7.z]
+Patch12: sudo-1.8.28-CVE-strtouid.patch
+Patch13: sudo-1.8.28-CVE-strtouid-test.patch
 
 %description
 Sudo (superuser do) allows a system administrator to give certain
@@ -93,6 +96,9 @@ plugins that use %{name}.
 
 %patch10 -p1 -b .pam-expired
 %patch11 -p1 -b .who-am-i
+
+%patch12 -p1 -b .CVE-strtouid
+%patch13 -p1 -b .CVE-strtouid-test
 
 %build
 autoreconf -I m4 -fv --install
@@ -231,6 +237,10 @@ rm -rf %{buildroot}
 %{_mandir}/man8/sudo_plugin.8*
 
 %changelog
+* Wed Oct 16 2019 Radovan Sroka <rsroka@redhat.com> 1.8.23-4.1
+- RHEL-7.7.z
+- fixed CVE-2019-14287
+  Resolves: rhbz#1760694
 
 * Wed Feb 20 2019 Radovan Sroka <rsroka@redhat.com> 1.8.23-4
 - RHEL-7.7 erratum
